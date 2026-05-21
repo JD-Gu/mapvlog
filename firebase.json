@@ -1,1 +1,60 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"mapvlog-1f06d","appId":"1:82352854112:android:2e0c8a88b8b44e16b85f05","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"mapvlog-1f06d","configurations":{"android":"1:82352854112:android:2e0c8a88b8b44e16b85f05","ios":"1:82352854112:ios:f58d293f1e52dbf8b85f05","macos":"1:82352854112:ios:f58d293f1e52dbf8b85f05","web":"1:82352854112:web:82c75c80da1d5343b85f05","windows":"1:82352854112:web:4c40cd634ac43df2b85f05"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|wasm)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        ]
+      },
+      {
+        "source": "index.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" }
+        ]
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "mapvlog-1f06d",
+          "appId": "1:82352854112:android:2e0c8a88b8b44e16b85f05",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "mapvlog-1f06d",
+          "configurations": {
+            "android": "1:82352854112:android:2e0c8a88b8b44e16b85f05",
+            "ios": "1:82352854112:ios:f58d293f1e52dbf8b85f05",
+            "macos": "1:82352854112:ios:f58d293f1e52dbf8b85f05",
+            "web": "1:82352854112:web:82c75c80da1d5343b85f05",
+            "windows": "1:82352854112:web:4c40cd634ac43df2b85f05"
+          }
+        }
+      }
+    }
+  }
+}

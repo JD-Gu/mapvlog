@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── vlogs 컬렉션 ────────────────────────────────────────────────────────
+    match /vlogs/{vlogId} {
+      // 익명 포함 누구나 읽기 가능
+      allow read: if true;
+
+      // 로그인 사용자만 새 브이로그 생성
+      allow create: if request.auth != null;
+
+      // 본인 브이로그만 수정·삭제
+      allow update, delete: if request.auth != null
+                            && request.auth.uid == resource.data.authorId;
+
+      // ── likes 서브컬렉션 ───────────────────────────────────────────────
+      match /likes/{userId} {
+        // 익명 포함 누구나 읽기 (좋아요 여부 확인용)
+        allow read: if true;
+
+        // 본인 좋아요 문서만 생성·삭제
+        allow create, delete: if request.auth != null
+                              && request.auth.uid == userId;
+      }
+    }
+
+    // ── users 컬렉션 ────────────────────────────────────────────────────────
+    match /users/{userId} {
+      // 익명 포함 누구나 읽기
+      allow read: if true;
+
+      // 본인 프로필만 생성·수정
+      allow create, update: if request.auth != null
+                            && request.auth.uid == userId;
+
+      // 삭제 불가 (탈퇴 기능 추가 시 별도 처리)
+      allow delete: if false;
+    }
+  }
+}
