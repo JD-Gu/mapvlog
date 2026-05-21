@@ -153,7 +153,13 @@ class _MapScreenState extends State<MapScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _ClusterListSheet(
         vlogs: vlogs,
-        onSelect: (vlog) => setState(() => _selectedVlog = vlog),
+        onSelect: (vlog) {
+          FirestoreService.incrementView(vlog.id);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: vlog)),
+          );
+        },
       ),
     );
   }
