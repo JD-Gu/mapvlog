@@ -2,6 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── 마스터 권한 (jaduck9@gmail.com) ────────────────────────────────────
+    function isMaster() {
+      return request.auth != null
+          && request.auth.uid == 'pNBOyNLJjVdgUYuGNwCWz8s3x0z1';
+    }
+
     // ── vlogs 컬렉션 ────────────────────────────────────────────────────────
     match /vlogs/{vlogId} {
       // 익명 포함 누구나 읽기 가능
@@ -10,9 +16,10 @@ service cloud.firestore {
       // 로그인 사용자만 새 브이로그 생성
       allow create: if request.auth != null;
 
-      // 본인 브이로그만 수정·삭제
-      allow update, delete: if request.auth != null
-                            && request.auth.uid == resource.data.authorId;
+      // 마스터 또는 본인 브이로그만 수정·삭제
+      allow update, delete: if isMaster()
+                            || (request.auth != null
+                                && request.auth.uid == resource.data.authorId);
 
       // ── likes 서브컬렉션 ───────────────────────────────────────────────
       match /likes/{userId} {
@@ -30,12 +37,13 @@ service cloud.firestore {
       // 익명 포함 누구나 읽기
       allow read: if true;
 
-      // 본인 프로필만 생성·수정
-      allow create, update: if request.auth != null
-                            && request.auth.uid == userId;
+      // 마스터 또는 본인 프로필만 생성·수정
+      allow create, update: if isMaster()
+                            || (request.auth != null
+                                && request.auth.uid == userId);
 
-      // 삭제 불가 (탈퇴 기능 추가 시 별도 처리)
-      allow delete: if false;
+      // 마스터만 삭제 가능 (일반 사용자 삭제 불가)
+      allow delete: if isMaster();
     }
   }
 }
