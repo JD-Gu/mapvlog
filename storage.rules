@@ -8,22 +8,36 @@ service firebase.storage {
           && request.auth.uid == 'pNBOyNLJjVdgUYuGNwCWz8s3x0z1';
     }
 
-    // ── vlogs/ 폴더 (영상·썸네일) ─────────────────────────────────────────
-    match /vlogs/{userId}/{allPaths=**} {
-      // 익명 포함 누구나 읽기·다운로드 가능
+    // ── videos/ 폴더 (동영상) ──────────────────────────────────────────────
+    match /videos/{userId}/{filename} {
       allow read: if true;
-
-      // 본인 폴더에만 업로드 가능 (로그인 필수)
       allow create: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 500 * 1024 * 1024; // 500MB 제한
-
-      // 마스터 또는 본인 파일만 삭제 가능
       allow delete: if isMaster()
-                   || (request.auth != null
-                       && request.auth.uid == userId);
+                   || (request.auth != null && request.auth.uid == userId);
+      allow update: if false;
+    }
 
-      // 덮어쓰기 불가 (재업로드 시 새 파일명 사용)
+    // ── photos/ 폴더 (사진) ────────────────────────────────────────────────
+    match /photos/{userId}/{filename} {
+      allow read: if true;
+      allow create: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 50 * 1024 * 1024; // 50MB 제한
+      allow delete: if isMaster()
+                   || (request.auth != null && request.auth.uid == userId);
+      allow update: if false;
+    }
+
+    // ── thumbnails/ 폴더 (썸네일) ──────────────────────────────────────────
+    match /thumbnails/{userId}/{filename} {
+      allow read: if true;
+      allow create: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024; // 10MB 제한
+      allow delete: if isMaster()
+                   || (request.auth != null && request.auth.uid == userId);
       allow update: if false;
     }
   }
