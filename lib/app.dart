@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/camera/camera_screen.dart';
 import 'screens/gallery/gallery_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -58,6 +59,49 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
   ];
 
+  // 로그인이 필요한 탭 인덱스
+  static const _authRequiredTabs = {2, 4}; // 촬영, 프로필
+
+  /// 탭 전환 — 로그인 필요 탭은 비로그인 시 로그인 유도
+  Future<void> _onTabTap(int index) async {
+    if (_authRequiredTabs.contains(index)) {
+      final auth = context.read<AuthProvider>();
+      if (!auth.isLoggedIn) {
+        await _showLoginRequired(index == 2 ? '촬영' : '프로필');
+        return;
+      }
+    }
+    setState(() => _currentIndex = index);
+  }
+
+  /// 로그인 유도 다이얼로그
+  Future<void> _showLoginRequired(String feature) async {
+    final nav = Navigator.of(context); // async gap 전에 캡처
+    final goLogin = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('로그인 필요'),
+        content: Text('$feature 기능은 로그인 후 이용할 수 있습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              '로그인',
+              style: TextStyle(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (goLogin == true && mounted) {
+      nav.push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+    }
+  }
+
   /// 뒤로가기 처리
   /// - 홈 탭이 아닌 경우: 홈 탭으로 이동
   /// - 홈 탭인 경우: 종료 확인 다이얼로그
@@ -102,7 +146,7 @@ class _MainShellState extends State<MainShell> {
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: _onTabTap,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textDisabled,
