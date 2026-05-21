@@ -191,10 +191,54 @@ class GpsIndexer {
 
   double _toRad(double deg) => deg * (Math.pi / 180);
   double _sin2(double x) => Math.sin(x) * Math.sin(x);
+
+  // ─────────────────────────────────────────────────────
+  // GPS 품질 처리 메서드 (4.1, 4.2 절 설명 참조)
+  // ─────────────────────────────────────────────────────
+
+  /// GPS 이상치 제거 — GpsIndexer 생성 전 전처리용 static 메서드
+  /// 사용 예: GpsIndexer(GpsIndexer.filterOutliers(rawTrack))
+  static List<GpsPoint> filterOutliers(List<GpsPoint> track) {
+    const maxSpeedMs = 83.3; // 시속 300km → 초속 83.3m
+    if (track.isEmpty) return [];
+    final filtered = <GpsPoint>[track.first];
+    for (int i = 1; i < track.length; i++) {
+      final prev = filtered.last;
+      final curr = track[i];
+      final dt = (curr.t - prev.t).toDouble();
+      if (dt <= 0) continue;
+      if (_distanceBetween(prev, curr) / dt <= maxSpeedMs) {
+        filtered.add(curr); // 이상치는 무시 (다음 포인트에서 보간으로 처리됨)
+      }
+    }
+    return filtered;
+  }
+
+  /// Haversine 거리 계산 static 버전 — filterOutliers 전용
+  static double _distanceBetween(GpsPoint p0, GpsPoint p1) {
+    const r = 6371000.0;
+    double rad(double d) => d * (Math.pi / 180);
+    double sin2(double x) => Math.sin(x) * Math.sin(x);
+    final a = sin2((rad(p1.lat) - rad(p0.lat)) / 2) +
+        Math.cos(rad(p0.lat)) * Math.cos(rad(p1.lat)) *
+            sin2((rad(p1.lng) - rad(p0.lng)) / 2);
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  /// GPS 신호 없는 구간(10초 이상 공백) 여부 확인
+  bool isStationary(double t) {
+    final idx = _binarySearch(t.toInt());
+    final insertionPoint = idx < 0 ? -(idx + 1) : idx;
+    if (insertionPoint >= _track.length) return true;
+    final p0 = insertionPoint > 0 ? _track[insertionPoint - 1] : _track[0];
+    final p1 = _track[Math.min(insertionPoint, _track.length - 1)];
+    return (p1.t - p0.t).abs() > 10; // 10초 이상 공백 → 정지 처리
+  }
 }
 ```
 
 > `Math` 는 `dart:math` 패키지의 `import 'dart:math' as Math;` 로 사용합니다.
+> (`Math.sin`, `Math.cos`, `Math.sqrt`, `Math.atan2`, `Math.min`, `Math.pi` 모두 포함)
 
 ### 3.3 플레이어에서 사용 예시
 
@@ -236,9 +280,17 @@ void _onVideoPositionChanged() {
 GPS 신호 순간 오류로 비정상적인 좌표가 수집될 수 있습니다.
 이전 포인트 대비 **속도가 비현실적(시속 300km 초과)** 이면 해당 포인트를 제거합니다.
 
+> `filterOutliers`와 `isStationary`는 `GpsIndexer` **클래스 내부 메서드**입니다.
+> `filterOutliers`는 `static`이므로 인스턴스 생성 전에 전처리 용도로 호출할 수 있습니다.
+> 전체 클래스 구조는 3.2를 참조하세요.
+
 ```dart
-List<GpsPoint> filterOutliers(List<GpsPoint> track) {
+// GpsIndexer 클래스 내부 static 메서드
+// 사용 예: GpsIndexer(GpsIndexer.filterOutliers(rawTrack))
+
+static List<GpsPoint> filterOutliers(List<GpsPoint> track) {
   const maxSpeedMs = 83.3; // 시속 300km → 초속 83.3m
+  if (track.isEmpty) return [];
   final filtered = <GpsPoint>[track.first];
 
   for (int i = 1; i < track.length; i++) {
@@ -247,13 +299,10 @@ List<GpsPoint> filterOutliers(List<GpsPoint> track) {
     final dt = (curr.t - prev.t).toDouble();
     if (dt <= 0) continue;
 
-    final dist = _haversine(prev, curr);
-    final speed = dist / dt;
-
-    if (speed <= maxSpeedMs) {
-      filtered.add(curr);
+    // _distanceBetween: 클래스 내부 static haversine 헬퍼 (3.2 참조)
+    if (_distanceBetween(prev, curr) / dt <= maxSpeedMs) {
+      filtered.add(curr); // 이상치는 무시 (다음 포인트에서 보간으로 처리됨)
     }
-    // 이상치는 무시 (다음 포인트에서 보간으로 처리됨)
   }
   return filtered;
 }
@@ -265,6 +314,9 @@ List<GpsPoint> filterOutliers(List<GpsPoint> track) {
 (마지막 수신 좌표를 유지하고 마커를 움직이지 않음)
 
 ```dart
+// GpsIndexer 클래스 내부 인스턴스 메서드
+// import 'dart:math' as Math; 필요 (Math.min 사용)
+
 bool isStationary(double t) {
   final idx = _binarySearch(t.toInt());
   final insertionPoint = idx < 0 ? -(idx + 1) : idx;
@@ -272,7 +324,7 @@ bool isStationary(double t) {
   if (insertionPoint >= _track.length) return true;
 
   final p0 = insertionPoint > 0 ? _track[insertionPoint - 1] : _track[0];
-  final p1 = _track[min(insertionPoint, _track.length - 1)];
+  final p1 = _track[Math.min(insertionPoint, _track.length - 1)]; // min() → Math.min()
   final gap = (p1.t - p0.t).abs();
 
   return gap > 10; // 10초 이상 공백 → 정지 처리

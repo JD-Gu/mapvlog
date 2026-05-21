@@ -187,7 +187,15 @@ defaultConfig {
 
 ### 4.5 iOS에 API 키 적용
 
-`ios/Runner/AppDelegate.swift`에 추가:
+`ios/Runner/Info.plist`에 키 항목을 먼저 추가합니다 (Xcode Build Settings → User-Defined로 주입 권장):
+
+```xml
+<key>GOOGLE_MAPS_API_KEY</key>
+<string>$(GOOGLE_MAPS_API_KEY)</string>
+```
+
+그 다음 `ios/Runner/AppDelegate.swift`에 추가:
+
 ```swift
 import GoogleMaps
 
@@ -197,11 +205,19 @@ import GoogleMaps
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GMSServices.provideAPIKey("YOUR_API_KEY")
+    // ⚠️ API 키를 코드에 직접 하드코딩하지 마세요.
+    // Info.plist 경유로 읽어서 코드와 키를 분리합니다.
+    let apiKey = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY") as? String ?? ""
+    GMSServices.provideAPIKey(apiKey)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
 ```
+
+> **배포 시 주의**: Xcode Cloud 또는 GitHub Actions에서 빌드할 때
+> `GOOGLE_MAPS_API_KEY` 환경변수를 CI/CD 시크릿으로 설정하고
+> `xcconfig` 또는 빌드 스크립트를 통해 `Info.plist`에 주입하세요.
+> API 키를 `.swift` 파일에 직접 입력하면 git 히스토리에 노출될 위험이 있습니다.
 
 ---
 

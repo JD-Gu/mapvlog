@@ -77,6 +77,7 @@ Firestore
 | totalDistance | number | 이동 거리 (미터) | 3200 |
 | gpsPointCount | number | GPS 좌표 개수 | 127 |
 | places | array | 주요 장소 목록 | [{t, placeId, name, lat, lng}] |
+| geohash | string | 시작 위치 geohash (위치 기반 검색용) | "wydm9" |
 | visibility | string | 공개 범위 (public/link/private) | "public" |
 | viewCount | number | 조회 수 | 152 |
 | likeCount | number | 좋아요 수 | 32 |
@@ -219,10 +220,14 @@ service cloud.firestore {
       }
     }
 
-    // 좋아요 - 로그인 사용자만
+    // 좋아요 - 로그인 사용자만, 본인 UID 문서만 생성/삭제 가능
+    // likeId = {uid}_{vlogId} 형식이므로 uid 필드로 본인 확인
     match /likes/{likeId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
     }
 
     // 팔로우 - 로그인 사용자만
@@ -242,7 +247,7 @@ service cloud.firestore {
 |--------|------|------|
 | vlogs | authorUid (ASC), createdAt (DESC) | 특정 사용자의 브이로그 목록 |
 | vlogs | visibility (ASC), createdAt (DESC) | 공개 피드 |
-| vlogs | startLocation (GEO) | 위치 기반 검색 |
+| vlogs | geohash (ASC) | 위치 기반 검색 (geohash prefix 범위 쿼리) |
 | likes | uid (ASC), createdAt (DESC) | 사용자 좋아요 목록 |
 | follows | followerUid (ASC) | 팔로잉 목록 |
 | follows | followingUid (ASC) | 팔로워 목록 |

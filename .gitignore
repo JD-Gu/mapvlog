@@ -43,3 +43,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase 설정 파일 (API 키 포함 — GitHub에 올리면 안 됨)
+google-services.json
+GoogleService-Info.plist
+
+# 환경변수 파일 (API 키 모음)
+.env
+.env.local
+
+# Android API 키 (local.properties에 GOOGLE_MAPS_API_KEY 포함)
+**/android/local.properties
+
+# Claude Code 세션 데이터
+.claude/

@@ -106,6 +106,12 @@ GET /vlogs
 | limit | int | 선택 | 최대 개수 (기본값: 20) |
 | cursor | string | 선택 | 페이지네이션 커서 |
 
+> **구현 주의 — Firestore GeoQuery 한계**
+> Firestore는 위도·경도 두 필드를 동시에 범위 필터링하는 쿼리를 지원하지 않습니다.
+> 위치 기반 검색은 `vlogs` 컬렉션에 `geohash` 필드를 추가하고
+> [`geoflutterfire_plus`](https://pub.dev/packages/geoflutterfire_plus) 패키지(또는 직접 geohash prefix 범위 쿼리)를 사용해 구현합니다.
+> DB 스키마 `05_db_schema.md`에 `geohash` 필드를 추가하고 해당 인덱스를 설정하세요.
+
 **Response 200**
 ```json
 {
@@ -122,7 +128,7 @@ GET /vlogs
         "lng": 126.923,
         "placeName": "홍대입구역"
       },
-      "distance": 3200,
+      "totalDistance": 3200,
       "duration": 320,
       "viewCount": 152,
       "likeCount": 32,
