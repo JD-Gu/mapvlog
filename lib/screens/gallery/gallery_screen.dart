@@ -327,25 +327,20 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
     );
   }
 
-  void _showClusterList(List<Vlog> vlogs) {
-    showModalBottomSheet(
+  Future<void> _showClusterList(List<Vlog> vlogs) async {
+    final selected = await showModalBottomSheet<Vlog>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _GalleryClusterSheet(
-        vlogs: vlogs,
-        onSelect: (vlog) {
-          // 바텀시트는 _GalleryClusterSheet 내부에서 Navigator.pop으로 닫힘
-          // 바로 플레이어로 이동
-          FirestoreService.incrementView(vlog.id);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => VlogPlayerScreen(vlog: vlog)),
-          );
-        },
-      ),
+      builder: (_) => _GalleryClusterSheet(vlogs: vlogs),
     );
+    if (selected != null && mounted) {
+      FirestoreService.incrementView(selected.id);
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: selected)),
+      );
+    }
   }
 
   /// 클러스터 원형 마커 (숫자 표시)
@@ -857,15 +852,13 @@ class _GalleryCluster {
 
 class _GalleryClusterSheet extends StatelessWidget {
   final List<Vlog> vlogs;
-  final void Function(Vlog) onSelect;
-  const _GalleryClusterSheet(
-      {required this.vlogs, required this.onSelect});
+  const _GalleryClusterSheet({required this.vlogs});
 
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.45,
+      initialChildSize: 0.5,
       minChildSize: 0.3,
       maxChildSize: 0.85,
       builder: (_, scrollCtrl) => Container(
@@ -885,7 +878,7 @@ class _GalleryClusterSheet extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               child: Row(
                 children: [
                   const Icon(Icons.location_on,
@@ -906,65 +899,130 @@ class _GalleryClusterSheet extends StatelessWidget {
             Expanded(
               child: ListView.separated(
                 controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
                 itemCount: vlogs.length,
-                separatorBuilder: (context, index) =>
-                    const Divider(height: 1, indent: 76),
-                itemBuilder: (ctx, i) {
-                  final vlog = vlogs[i];
-                  final thumb = vlog.thumbnailUrl ?? '';
-                  final isVideo = (vlog.videoUrl ?? '').isNotEmpty;
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 52,
-                        height: 52,
-                        child: thumb.isNotEmpty
-                            ? Image.network(thumb,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stack) =>
-                                    _thumb(isVideo))
-                            : _thumb(isVideo),
-                      ),
-                    ),
-                    title: Text(
-                      vlog.title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: AppColors.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Row(children: [
-                      const Icon(Icons.location_on,
-                          size: 11, color: AppColors.primary),
-                      const SizedBox(width: 2),
-                      Expanded(
-                        child: Text(
-                          vlog.placeName,
-                          style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ]),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppColors.textDisabled),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      onSelect(vlog);
-                    },
-                  );
-                },
+                separatorBuilder: (_, index) =>
+                    const SizedBox(height: 8),
+                itemBuilder: (_, i) =>
+                    _GalleryVlogCard(vlog: vlogs[i]),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 갤러리 클러스터 시트용 카드
+class _GalleryVlogCard extends StatelessWidget {
+  final Vlog vlog;
+  const _GalleryVlogCard({required this.vlog});
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = vlog.thumbnailUrl ?? '';
+    final isVideo = (vlog.videoUrl ?? '').isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.surfaceVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: thumb.isNotEmpty
+                  ? Image.network(thumb,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, err, stack) => _thumb(isVideo))
+                  : _thumb(isVideo),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  vlog.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.location_on,
+                      size: 12, color: AppColors.primary),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    child: Text(
+                      vlog.placeName,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.favorite,
+                      size: 12, color: AppColors.error),
+                  const SizedBox(width: 2),
+                  Text('${vlog.likeCount}',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary)),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.remove_red_eye,
+                      size: 12, color: AppColors.textDisabled),
+                  const SizedBox(width: 2),
+                  Text('${vlog.viewCount}',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textDisabled)),
+                ]),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, vlog),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+            ),
+            child: const Text('▶ 재생',
+                style: TextStyle(fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
