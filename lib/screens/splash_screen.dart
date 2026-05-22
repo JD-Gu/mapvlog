@@ -1,9 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app.dart';
-import '../providers/auth_provider.dart';
 import '../utils/constants.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/onboarding_screen.dart';
@@ -23,19 +22,26 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _navigate() async {
-    // context는 async 이전에 미리 캡처
-    final authProvider = context.read<AuthProvider>();
+    // 스플래시 최소 표시 시간 + Firebase Auth 초기 상태 확정을 동시에 대기
+    // 웹에서는 localStorage 세션 복원이 비동기로 진행되어 먼저 체크하면
+    // 로그인 상태가 null로 잘못 판단되는 race condition이 발생함
+    User? user;
+    await Future.wait([
+      Future.delayed(const Duration(seconds: 2)),
+      FirebaseAuth.instance
+          .authStateChanges()
+          .first
+          .then((u) => user = u),
+    ]);
 
-    await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
 
     final prefs = await SharedPreferences.getInstance();
     final onboardingDone = prefs.getBool('onboarding_done') ?? false;
-    final isLoggedIn = authProvider.isLoggedIn;
 
     if (!mounted) return;
 
-    if (isLoggedIn) {
+    if (user != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainShell()),
       );
