@@ -591,7 +591,6 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
               vlog: _selected!,
               onClose: () => setState(() => _selected = null),
               onPlay: () {
-                FirestoreService.incrementView(_selected!.id);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
