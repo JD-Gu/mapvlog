@@ -728,6 +728,35 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 비로그인 2차 방어선 — 탭 진입 차단(_onTabTap)이 웹에서 실패할 때 대비
+    if (FirebaseAuth.instance.currentUser == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline,
+                  size: 64, color: AppColors.textDisabled),
+              const SizedBox(height: 16),
+              const Text(
+                '로그인이 필요합니다',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '촬영 기능은 로그인 후 이용할 수 있습니다.',
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: kIsWeb ? _buildWebUi() : _buildMobileUi(),

@@ -336,7 +336,7 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
       builder: (sheetCtx) => _GalleryClusterSheet(
         vlogs: vlogs,
         onSelect: (vlog) {
-          Navigator.pop(sheetCtx); // 시트 닫기
+          nav.pop(); // 시트 닫기 (캡처한 nav 사용 - 웹 호환)
           nav.push(MaterialPageRoute(
               builder: (_) => VlogPlayerScreen(vlog: vlog)));
         },
@@ -590,13 +590,6 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
             child: _MapPopup(
               vlog: _selected!,
               onClose: () => setState(() => _selected = null),
-              onPlay: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => VlogPlayerScreen(vlog: _selected!)),
-                );
-              },
             ),
           ),
       ],
@@ -637,9 +630,8 @@ class _EmptyState extends StatelessWidget {
 class _MapPopup extends StatefulWidget {
   final Vlog vlog;
   final VoidCallback onClose;
-  final VoidCallback onPlay;
-  const _MapPopup(
-      {required this.vlog, required this.onClose, required this.onPlay});
+  // onPlay 제거: 팝업 자신의 context로 직접 내비게이션 (_VlogPopup 패턴)
+  const _MapPopup({required this.vlog, required this.onClose});
 
   @override
   State<_MapPopup> createState() => _MapPopupState();
@@ -768,7 +760,12 @@ class _MapPopupState extends State<_MapPopup> {
                 padding: EdgeInsets.zero,
               ),
               ElevatedButton(
-                onPressed: widget.onPlay,
+                // 팝업 자신의 context 사용 — 웹 호환(_VlogPopup과 동일 패턴)
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => VlogPlayerScreen(vlog: widget.vlog)),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,

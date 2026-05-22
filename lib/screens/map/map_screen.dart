@@ -157,7 +157,8 @@ class _MapScreenState extends State<MapScreen> {
       builder: (sheetCtx) => _ClusterListSheet(
         vlogs: vlogs,
         onSelect: (vlog) {
-          Navigator.pop(sheetCtx); // 시트 닫기
+          // 웹 호환: sheetCtx가 아닌 캡처한 nav 사용
+          nav.pop();  // 시트 닫기
           nav.push(MaterialPageRoute(
               builder: (_) => VlogPlayerScreen(vlog: vlog)));
         },
