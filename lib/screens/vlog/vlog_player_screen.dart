@@ -50,15 +50,13 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
   /// 현재위치 마커 탭 시 역지오코딩 결과 캐시 (null = 좌표만 표시)
   String? _currentMarkerAddress;
 
-  // ─── 타이머 (위치 동기화) ─────────────────────────────────────────────────
-  Timer? _syncTimer;
-
   // ─── 로컬 편집 상태 (수정 후 즉시 반영용) ───────────────────────────────────
   late String _title;
   late String _placeName;
 
   // ─── 좋아요 ────────────────────────────────────────────────────────────────
   bool _isLiked = false;
+  bool _isLikeLoading = false; // 중복 탭 방지
   late int _likeCount;
 
   // ─── 화면 방향 / 레이아웃 ─────────────────────────────────────────────────
@@ -93,8 +91,9 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
     if (mounted) setState(() => _isLiked = liked);
   }
 
-  /// 좋아요 토글 (낙관적 UI 업데이트)
+  /// 좋아요 토글 (낙관적 UI 업데이트 + 중복 탭 방지)
   Future<void> _toggleLike() async {
+    if (_isLikeLoading) return; // 중복 탭 차단
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -102,12 +101,13 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
       );
       return;
     }
-    // 낙관적 업데이트 (즉시 반영)
     setState(() {
+      _isLikeLoading = true;
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
     });
     await FirestoreService.toggleLike(widget.vlog.id, uid);
+    if (mounted) setState(() => _isLikeLoading = false);
   }
 
   Future<void> _initVideo() async {
@@ -408,7 +408,7 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => SafeArea(
+      builder: (sheetCtx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -427,7 +427,7 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
               title: const Text('수정'),
               subtitle: const Text('제목·장소명 변경'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetCtx); // 시트 닫기
                 _showEditDialog();
               },
             ),
@@ -436,7 +436,7 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
               title: const Text('삭제', style: TextStyle(color: AppColors.error)),
               subtitle: const Text('이 기록을 영구 삭제합니다'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetCtx); // 시트 닫기
                 _confirmDelete();
               },
             ),
@@ -622,8 +622,8 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
     _videoController?.removeListener(_onVideoTick);
     _videoController?.dispose();
     _mapController?.dispose();
-    _syncTimer?.cancel();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    // 시스템 방향 제한 해제 (기기 자동회전 설정 복원)
+    SystemChrome.setPreferredOrientations([]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }

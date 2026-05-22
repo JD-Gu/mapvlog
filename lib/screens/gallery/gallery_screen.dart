@@ -120,18 +120,18 @@ class _GridTile extends StatelessWidget {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dlgCtx) => AlertDialog(
         title: const Text('브이로그 삭제'),
         content: Text(
           '"${vlog.title}"을(를) 삭제하시겠습니까?\n영상·사진 파일도 함께 삭제됩니다.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dlgCtx, false),
             child: const Text('취소'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dlgCtx, true),
             child: const Text(
               '삭제',
               style: TextStyle(color: Colors.red),
@@ -149,7 +149,6 @@ class _GridTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        FirestoreService.incrementView(vlog.id);
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: vlog)),
@@ -177,21 +176,22 @@ class _GridTile extends StatelessWidget {
                   size: 18, color: Colors.white70),
             ),
 
-          // GPS 뱃지
-          Positioned(
-            bottom: 4,
-            right: 4,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(4),
+          // GPS 뱃지 (GPS 트랙이 있는 경우만)
+          if (vlog.hasGpsTrack)
+            Positioned(
+              bottom: 4,
+              right: 4,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.gps_fixed,
+                    size: 10, color: AppColors.secondary),
               ),
-              child: const Icon(Icons.gps_fixed,
-                  size: 10, color: AppColors.secondary),
             ),
-          ),
         ],
       ),
     );
@@ -327,20 +327,21 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
     );
   }
 
-  Future<void> _showClusterList(List<Vlog> vlogs) async {
-    final selected = await showModalBottomSheet<Vlog>(
+  void _showClusterList(List<Vlog> vlogs) {
+    final nav = Navigator.of(context); // async gap 전에 캡처
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _GalleryClusterSheet(vlogs: vlogs),
+      builder: (sheetCtx) => _GalleryClusterSheet(
+        vlogs: vlogs,
+        onSelect: (vlog) {
+          Navigator.pop(sheetCtx); // 시트 닫기
+          nav.push(MaterialPageRoute(
+              builder: (_) => VlogPlayerScreen(vlog: vlog)));
+        },
+      ),
     );
-    if (selected != null && mounted) {
-      FirestoreService.incrementView(selected.id);
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: selected)),
-      );
-    }
   }
 
   /// 클러스터 원형 마커 (숫자 표시)
@@ -852,7 +853,8 @@ class _GalleryCluster {
 
 class _GalleryClusterSheet extends StatelessWidget {
   final List<Vlog> vlogs;
-  const _GalleryClusterSheet({required this.vlogs});
+  final void Function(Vlog) onSelect;
+  const _GalleryClusterSheet({required this.vlogs, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -905,7 +907,7 @@ class _GalleryClusterSheet extends StatelessWidget {
                 separatorBuilder: (_, index) =>
                     const SizedBox(height: 8),
                 itemBuilder: (_, i) =>
-                    _GalleryVlogCard(vlog: vlogs[i]),
+                    _GalleryVlogCard(vlog: vlogs[i], onSelect: onSelect),
               ),
             ),
           ],
@@ -918,7 +920,8 @@ class _GalleryClusterSheet extends StatelessWidget {
 /// 갤러리 클러스터 시트용 카드
 class _GalleryVlogCard extends StatelessWidget {
   final Vlog vlog;
-  const _GalleryVlogCard({required this.vlog});
+  final void Function(Vlog) onSelect;
+  const _GalleryVlogCard({required this.vlog, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -1008,7 +1011,7 @@ class _GalleryVlogCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, vlog),
+            onPressed: () => onSelect(vlog),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,

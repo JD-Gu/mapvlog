@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/vlog.dart';
@@ -18,7 +19,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    FirestoreService.seedDummyData().catchError((_) {});
+    // 더미 데이터는 개발 환경에서만 시드
+    if (kDebugMode) FirestoreService.seedDummyData().catchError((_) {});
   }
 
   // ─── 등록자 전용 수정·삭제 메뉴 ──────────────────────────────────────────
@@ -374,7 +376,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       return VlogCard(
                         vlog: vlog,
                         onTap: () {
-                          FirestoreService.incrementView(vlog.id);
                           Navigator.push(
                             context,
                             MaterialPageRoute(

@@ -581,7 +581,7 @@ class _CameraScreenState extends State<CameraScreen>
           );
           if (thumbBytes != null) {
             final thumbPath =
-                FirebaseStorageService.photoPath(userId, '${id}_thumb.jpg');
+                FirebaseStorageService.thumbnailPath(userId, '${id}_thumb.jpg');
             thumbnailUrl = await FirebaseStorageService.uploadBytes(
               bytes: thumbBytes,
               path: thumbPath,
@@ -657,17 +657,26 @@ class _CameraScreenState extends State<CameraScreen>
     final bytes = await xfile.readAsBytes();
 
     // 1. exif 패키지로 Orientation 태그 직접 읽기
+    // exif의 IfdValues는 Dart int가 아닌 래퍼 타입이므로
+    // `is int` 체크 대신 toString() 후 파싱
     int orientation = 1;
     try {
       final tags = await readExifFromBytes(bytes);
       final orientTag = tags['Image Orientation'];
       if (orientTag != null) {
         final vals = orientTag.values.toList();
-        if (vals.isNotEmpty && vals.first is int) {
-          orientation = vals.first as int;
+        if (vals.isNotEmpty) {
+          final raw = vals.first;
+          if (raw is int) {
+            orientation = raw;
+          } else {
+            orientation = int.tryParse(raw.toString()) ?? 1;
+          }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('EXIF 파싱 실패: $e');
+    }
 
     // 정방향(1)이면 원본 바이트 그대로 반환 (재인코딩 불필요)
     if (orientation <= 1) return bytes;

@@ -50,6 +50,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  AuthProvider? _authProvider;
 
   final List<Widget> _screens = const [
     HomeScreen(),
@@ -58,6 +59,33 @@ class _MainShellState extends State<MainShell> {
     GalleryScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // AuthProvider 리스너 등록 — 로그아웃 시 보호 탭이면 홈으로 이동
+    final newAuth = context.read<AuthProvider>();
+    if (_authProvider != newAuth) {
+      _authProvider?.removeListener(_onAuthChanged);
+      _authProvider = newAuth;
+      _authProvider!.addListener(_onAuthChanged);
+    }
+  }
+
+  void _onAuthChanged() {
+    if (!mounted) return;
+    // 로그아웃 후 보호 탭(촬영=2, 프로필=4)이면 홈으로 리셋
+    if (!(_authProvider?.isLoggedIn ?? true) &&
+        (_currentIndex == 2 || _currentIndex == 4)) {
+      setState(() => _currentIndex = 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _authProvider?.removeListener(_onAuthChanged);
+    super.dispose();
+  }
 
   /// 탭 전환 — 로그인 필요 탭(촬영=2, 프로필=4)은 비로그인 시 로그인 유도
   void _onTabTap(int index) {
@@ -77,16 +105,16 @@ class _MainShellState extends State<MainShell> {
     final nav = Navigator.of(context); // async gap 전에 캡처
     final goLogin = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dlgCtx) => AlertDialog(
         title: const Text('로그인 필요'),
         content: Text('$feature 기능은 로그인 후 이용할 수 있습니다.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dlgCtx, false),
             child: const Text('취소'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dlgCtx, true),
             child: const Text(
               '로그인',
               style: TextStyle(color: AppColors.primary),
@@ -111,16 +139,16 @@ class _MainShellState extends State<MainShell> {
     // 홈 탭 → 종료 확인
     final shouldExit = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dlgCtx) => AlertDialog(
         title: const Text('앱 종료'),
         content: const Text('앱을 종료할까요?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dlgCtx, false),
             child: const Text('취소'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dlgCtx, true),
             child: const Text(
               '종료',
               style: TextStyle(color: AppColors.error),

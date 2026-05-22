@@ -150,7 +150,17 @@ class FirestoreService {
       }
     }
 
-    // 3. Firestore 문서 삭제
+    // 3. likes 서브컬렉션 삭제 (Firestore는 부모 삭제 시 서브컬렉션 자동 삭제 안 됨)
+    final likesSnap = await _vlogs.doc(id).collection('likes').get();
+    if (likesSnap.docs.isNotEmpty) {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final likeDoc in likesSnap.docs) {
+        batch.delete(likeDoc.reference);
+      }
+      await batch.commit();
+    }
+
+    // 4. Firestore 문서 삭제
     await _vlogs.doc(id).delete();
   }
 

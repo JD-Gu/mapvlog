@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -51,6 +52,7 @@ class _MapScreenState extends State<MapScreen> {
   double _zoom = 12.0;
   MapType _mapType = MapType.normal;
   LatLng _mapCenter = _defaultLocation;
+  StreamSubscription<List<Vlog>>? _vlogsSub; // 누수 방지
 
   @override
   void initState() {
@@ -61,7 +63,7 @@ class _MapScreenState extends State<MapScreen> {
   // ─── 데이터 로드 ────────────────────────────────────────────────────────────
 
   void _loadVlogs() {
-    FirestoreService.watchVlogs(limit: 50).listen((vlogs) {
+    _vlogsSub = FirestoreService.watchVlogs(limit: 50).listen((vlogs) {
       if (!mounted) return;
       _vlogs = vlogs;
       _rebuildMarkers();
@@ -146,22 +148,21 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Future<void> _showClusterList(List<Vlog> vlogs) async {
-    // showModalBottomSheet 반환값으로 선택된 vlog를 받아 처리
-    // (콜백 방식은 웹에서 context 문제로 동작 불안정)
-    final selected = await showModalBottomSheet<Vlog>(
+  void _showClusterList(List<Vlog> vlogs) {
+    final nav = Navigator.of(context); // async gap 전에 캡처
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ClusterListSheet(vlogs: vlogs),
+      builder: (sheetCtx) => _ClusterListSheet(
+        vlogs: vlogs,
+        onSelect: (vlog) {
+          Navigator.pop(sheetCtx); // 시트 닫기
+          nav.push(MaterialPageRoute(
+              builder: (_) => VlogPlayerScreen(vlog: vlog)));
+        },
+      ),
     );
-    if (selected != null && mounted) {
-      FirestoreService.incrementView(selected.id);
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: selected)),
-      );
-    }
   }
 
   // ─── 마커 비트맵 생성 ────────────────────────────────────────────────────────
@@ -275,6 +276,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _vlogsSub?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -486,7 +488,6 @@ class _VlogPopup extends StatelessWidget {
               ),
               ElevatedButton(
                 onPressed: () {
-                  FirestoreService.incrementView(vlog.id);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -526,7 +527,8 @@ class _VlogPopup extends StatelessWidget {
 
 class _ClusterListSheet extends StatelessWidget {
   final List<Vlog> vlogs;
-  const _ClusterListSheet({required this.vlogs});
+  final void Function(Vlog) onSelect;
+  const _ClusterListSheet({required this.vlogs, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -581,7 +583,8 @@ class _ClusterListSheet extends StatelessWidget {
                 itemCount: vlogs.length,
                 separatorBuilder: (_, index) =>
                     const SizedBox(height: 8),
-                itemBuilder: (_, i) => _VlogCard(vlog: vlogs[i]),
+                itemBuilder: (_, i) =>
+                    _VlogCard(vlog: vlogs[i], onSelect: onSelect),
               ),
             ),
           ],
@@ -594,7 +597,8 @@ class _ClusterListSheet extends StatelessWidget {
 /// 클러스터 시트용 카드 — 단일 팝업과 동일한 레이아웃
 class _VlogCard extends StatelessWidget {
   final Vlog vlog;
-  const _VlogCard({required this.vlog});
+  final void Function(Vlog) onSelect;
+  const _VlogCard({required this.vlog, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -687,7 +691,7 @@ class _VlogCard extends StatelessWidget {
           const SizedBox(width: 8),
           // 재생 버튼
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, vlog),
+            onPressed: () => onSelect(vlog),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
