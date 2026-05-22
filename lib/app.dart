@@ -59,16 +59,14 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
   ];
 
-  // 로그인이 필요한 탭 인덱스
-  static const _authRequiredTabs = {2, 4}; // 촬영, 프로필
-
-  /// 탭 전환 — 로그인 필요 탭은 비로그인 시 로그인 유도
-  Future<void> _onTabTap(int index) async {
-    if (_authRequiredTabs.contains(index)) {
+  /// 탭 전환 — 로그인 필요 탭(촬영=2, 프로필=4)은 비로그인 시 로그인 유도
+  void _onTabTap(int index) {
+    // 동기 체크: async onTap은 웹에서 Future가 무시될 수 있어 동기로 처리
+    if (index == 2 || index == 4) {
       final auth = context.read<AuthProvider>();
       if (!auth.isLoggedIn) {
-        await _showLoginRequired(index == 2 ? '촬영' : '프로필');
-        return;
+        _showLoginRequired(index == 2 ? '촬영' : '프로필');
+        return; // setState 호출 없이 리턴 → 탭 전환 차단
       }
     }
     setState(() => _currentIndex = index);
