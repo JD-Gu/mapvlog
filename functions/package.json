@@ -3,7 +3,7 @@
   "description": "PinFlick FCM 푸시 발송 Cloud Functions",
   "main": "index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "scripts": {
     "serve": "firebase emulators:start --only functions",

@@ -62,7 +62,8 @@ const String kAppChannel = 'beta'; // 'beta' | 'stable'
 /// 웹 푸시용 VAPID 공개키 (Firebase 콘솔 → 프로젝트 설정 → Cloud Messaging →
 /// 웹 푸시 인증서에서 "키 쌍 생성" 후 그 값을 여기에 붙여넣으세요).
 /// 비워두면 웹에서는 토큰 발급이 비활성화됩니다(Android는 무관).
-const String kWebVapidKey = '';
+const String kWebVapidKey =
+    'BHKTmW74yLNjzVzW8-xivzKxNL1puir3fo5HnHO1eHTxoXho--7lz5iKyR0xjDEpTLVHiqkmGj4scxBmwj66XBE';
 
 /// Android 기본 알림 채널 ID — AndroidManifest 의 default_notification_channel_id 와 일치해야 함
 const String kPushChannelId = 'pinflick_default';
