@@ -749,7 +749,8 @@ class _CommentTileState extends State<_CommentTile> {
                   text: TextSpan(
                     style: TextStyle(
                       fontSize: fontSize,
-                                            height: 1.4,
+                      height: 1.4,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                     children: [
                       TextSpan(

@@ -54,8 +54,8 @@ const Color kPolylineColor = Color(0xFF1A73E8);
 const int kPolylineWidth = 4;
 
 // 앱 버전 — pubspec.yaml 의 version 필드와 동기화 유지 (수동)
-const String kAppVersion = '1.48.0';
-const String kAppBuildNumber = '69';
+const String kAppVersion = '1.49.0';
+const String kAppBuildNumber = '70';
 const String kAppChannel = 'beta'; // 'beta' | 'stable'
 
 /// APK 다운로드 URL — 빌드번호 쿼리로 브라우저/다운로드매니저 캐시 우회

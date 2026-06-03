@@ -864,6 +864,35 @@ class _SavedVlogsSheetState extends State<_SavedVlogsSheet> {
                       child: CircularProgressIndicator(
                           color: AppColors.primary));
                 }
+                if (snap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xl),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline,
+                              size: 40, color: AppColors.error),
+                          const SizedBox(height: 10),
+                          const Text('저장 목록을 불러오지 못했어요',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${snap.error}',
+                            textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 final all = snap.data ?? [];
                 final vlogs = _filter == null
                     ? all

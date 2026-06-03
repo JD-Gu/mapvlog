@@ -363,10 +363,16 @@ class FirestoreService {
         continue;
       }
       final vlogDocs = await Future.wait(vlogRefs.map((r) => r.get()));
-      final vlogs = vlogDocs
-          .where((d) => d.exists)
-          .map(_docToVlog)
-          .toList();
+      final vlogs = <Vlog>[];
+      for (final d in vlogDocs) {
+        if (!d.exists) continue;
+        try {
+          vlogs.add(_docToVlog(d));
+        } catch (e) {
+          // 손상된 vlog 1건이 전체 목록을 막지 않도록 스킵
+          debugPrint('저장한 vlog 파싱 실패 (스킵) ${d.id}: $e');
+        }
+      }
       yield vlogs;
     }
   }
