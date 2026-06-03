@@ -26,6 +26,7 @@ import '../../services/friend_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/marker_emojis.dart';
+import '../../widgets/check_in_sheet.dart';
 import '../../widgets/emoji_picker_row.dart';
 import '../../utils/photo_utils.dart';
 import '../../utils/sheets.dart';
@@ -361,6 +362,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showEditDialog(Vlog vlog) async {
+    // 체크인은 전용 체크인 시트(수정 모드)로 — 위치·표시시간·공개범위까지 일관 편집
+    if (vlog.isCheckIn) {
+      await CheckInSheet.open(context, editing: vlog);
+      return;
+    }
     final titleCtrl = TextEditingController(text: vlog.title);
     final placeCtrl = TextEditingController(text: vlog.placeName);
     String selectedEmoji = vlog.markerEmoji ?? MarkerEmojis.defaultEmoji;

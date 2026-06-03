@@ -6,6 +6,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/vlog.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
@@ -20,7 +21,8 @@ import 'visibility_picker.dart';
 class CheckInSheet {
   static const _presetEmojis = ['📍', '🍕', '☕', '🍻', '🏃', '📚', '🚗', '🎉', '💼', '🏠'];
 
-  static Future<void> open(BuildContext context) async {
+  /// 새 체크인은 [editing] null, 기존 체크인 수정은 [editing] 에 해당 Vlog 전달.
+  static Future<void> open(BuildContext context, {Vlog? editing}) async {
     HapticFeedback.mediumImpact();
     await showModalBottomSheet(
       context: context,
@@ -29,13 +31,14 @@ class CheckInSheet {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => const _CheckInView(),
+      builder: (_) => _CheckInView(editing: editing),
     );
   }
 }
 
 class _CheckInView extends StatefulWidget {
-  const _CheckInView();
+  final Vlog? editing;
+  const _CheckInView({this.editing});
 
   @override
   State<_CheckInView> createState() => _CheckInViewState();
@@ -46,6 +49,7 @@ class _CheckInViewState extends State<_CheckInView> {
   String _emoji = '📍';
   VisibilitySelection _vis = VisibilitySelection.public;
   String _expiry = '6시간'; // 지도 표시·자동삭제 기준 시간
+  bool _expiryTouched = false; // 수정 시 사용자가 표시시간을 바꿨는지
   bool _emojiManuallyPicked = false; // 사용자가 직접 고른 후엔 자동 추천 중단
   Position? _position;
   String? _address;
@@ -53,11 +57,50 @@ class _CheckInViewState extends State<_CheckInView> {
   bool _saving = false;
   String? _error;
 
+  bool get _isEdit => widget.editing != null;
+
   @override
   void initState() {
     super.initState();
-    _fetchLocation();
+    final edit = widget.editing;
+    if (edit != null) {
+      // 수정 모드 — 기존 값 프리필 (현재 위치 자동 조회 안 함)
+      _emoji = edit.markerEmoji ?? '📍';
+      _emojiManuallyPicked = true;
+      _msgCtrl.text = _messageFromTitle(edit);
+      _address = edit.address;
+      _position = Position(
+        latitude: edit.lat,
+        longitude: edit.lng,
+        timestamp: DateTime.now(),
+        accuracy: 0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+      _locating = false;
+      _vis = VisibilitySelection(
+        visibility: edit.visibility,
+        groupIds: edit.visibleGroupIds,
+        visibleUids: edit.visibleUids,
+      );
+    } else {
+      _fetchLocation();
+    }
     _msgCtrl.addListener(_onMessageChanged);
+  }
+
+  /// 저장된 title("$emoji $msg" 또는 "$emoji 여기 있어요")에서 메시지만 복원
+  String _messageFromTitle(Vlog v) {
+    var t = v.title;
+    final e = v.markerEmoji ?? '';
+    if (e.isNotEmpty && t.startsWith(e)) t = t.substring(e.length);
+    t = t.trim();
+    if (t == '여기 있어요') return '';
+    return t;
   }
 
   @override
@@ -116,8 +159,12 @@ class _CheckInViewState extends State<_CheckInView> {
 
   static const _expiryOptions = ['1시간', '6시간', '오늘 종료', '24시간'];
 
-  /// 선택된 표시 시간 → 만료 시각 계산
+  /// 선택된 표시 시간 → 만료 시각 계산.
+  /// 수정 모드에서 사용자가 표시시간을 안 건드렸으면 기존 만료시각 유지.
   DateTime _computeExpiry() {
+    if (_isEdit && !_expiryTouched && widget.editing!.expiresAt != null) {
+      return widget.editing!.expiresAt!;
+    }
     final now = DateTime.now();
     switch (_expiry) {
       case '1시간':
@@ -192,26 +239,44 @@ class _CheckInViewState extends State<_CheckInView> {
     try {
       final msg = _msgCtrl.text.trim();
       final title = msg.isEmpty ? '$_emoji 여기 있어요' : '$_emoji $msg';
-      await FirestoreService.createVlog(
-        authorId: user.uid,
-        authorName: user.displayName ?? user.email ?? '익명',
-        authorPhotoUrl: user.photoURL,
-        title: title,
-        placeName: msg.isEmpty ? (_address ?? '체크인') : msg,
-        lat: pos.latitude,
-        lng: pos.longitude,
-        address: _address,
-        markerEmoji: _emoji,
-        isCheckIn: true,
-        expiresAt: _computeExpiry(),
-        visibility: _vis.visibility,
-        visibleGroupIds: _vis.groupIds,
-        visibleUids: _vis.visibleUids,
-      );
+      final placeName = msg.isEmpty ? (_address ?? '체크인') : msg;
+      if (_isEdit) {
+        await FirestoreService.updateVlog(
+          id: widget.editing!.id,
+          title: title,
+          placeName: placeName,
+          markerColor: MarkerEmojis.colorOf(_emoji).toARGB32(),
+          markerEmoji: _emoji,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          address: _address,
+          expiresAt: _computeExpiry(),
+          visibility: _vis.visibility,
+          visibleGroupIds: _vis.groupIds,
+          visibleUids: _vis.visibleUids,
+        );
+      } else {
+        await FirestoreService.createVlog(
+          authorId: user.uid,
+          authorName: user.displayName ?? user.email ?? '익명',
+          authorPhotoUrl: user.photoURL,
+          title: title,
+          placeName: placeName,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          address: _address,
+          markerEmoji: _emoji,
+          isCheckIn: true,
+          expiresAt: _computeExpiry(),
+          visibility: _vis.visibility,
+          visibleGroupIds: _vis.groupIds,
+          visibleUids: _vis.visibleUids,
+        );
+      }
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('✅ $title — 체크인 완료'),
+        content: Text(_isEdit ? '✅ 수정됐어요' : '✅ $title — 체크인 완료'),
         backgroundColor: AppColors.secondary,
         duration: const Duration(seconds: 2),
       ));
@@ -219,7 +284,7 @@ class _CheckInViewState extends State<_CheckInView> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('체크인 실패: $e'),
+        content: Text(_isEdit ? '수정 실패: $e' : '체크인 실패: $e'),
         backgroundColor: AppColors.error,
       ));
     }
@@ -262,10 +327,10 @@ class _CheckInViewState extends State<_CheckInView> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    '빠른 체크인',
-                    style: TextStyle(
+                    _isEdit ? '체크인 수정' : '빠른 체크인',
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800),
                   ),
@@ -526,7 +591,10 @@ class _CheckInViewState extends State<_CheckInView> {
                   child: GestureDetector(
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() => _expiry = opt);
+                      setState(() {
+                        _expiry = opt;
+                        _expiryTouched = true;
+                      });
                     },
                     child: Container(
                       margin: const EdgeInsets.only(right: 6),
@@ -589,8 +657,10 @@ class _CheckInViewState extends State<_CheckInView> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : const Icon(Icons.push_pin, size: 18),
-              label: Text(_saving ? '체크인 중...' : '체크인'),
+                  : Icon(_isEdit ? Icons.check : Icons.push_pin, size: 18),
+              label: Text(_saving
+                  ? (_isEdit ? '저장 중...' : '체크인 중...')
+                  : (_isEdit ? '저장' : '체크인')),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 minimumSize: const Size(double.infinity, 50),

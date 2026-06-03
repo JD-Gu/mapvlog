@@ -513,6 +513,13 @@ class FirestoreService {
     String? markerEmoji,
     List<String>? photoUrls,
     String? thumbnailUrl,
+    double? lat,
+    double? lng,
+    String? address,
+    DateTime? expiresAt,
+    VlogVisibility? visibility,
+    List<String>? visibleGroupIds,
+    List<String>? visibleUids,
   }) async {
     final data = <String, dynamic>{
       'title': title,
@@ -523,6 +530,21 @@ class FirestoreService {
     if (markerEmoji != null) data['markerEmoji'] = markerEmoji;
     if (photoUrls != null) data['photoUrls'] = photoUrls;
     if (thumbnailUrl != null) data['thumbnailUrl'] = thumbnailUrl;
+    if (lat != null) data['lat'] = lat;
+    if (lng != null) data['lng'] = lng;
+    if (address != null) data['address'] = address;
+    if (expiresAt != null) data['expiresAt'] = Timestamp.fromDate(expiresAt);
+    // 공개 범위 (지정 시에만 갱신)
+    if (visibility != null) {
+      data['visibility'] = visibility.value;
+      if (visibility == VlogVisibility.groups) {
+        data['visibleGroupIds'] = visibleGroupIds ?? const [];
+        data['visibleUids'] = visibleUids ?? const [];
+      } else {
+        data['visibleGroupIds'] = FieldValue.delete();
+        data['visibleUids'] = FieldValue.delete();
+      }
+    }
     await _vlogs.doc(id).update(data);
   }
 
