@@ -19,9 +19,9 @@ enum FriendshipStatus {
 /// 친구 관계 등급 (베프/부끄럼/불편) — 그룹 베이스라인
 /// 통일된 3-mode 용어: 베프(인싸) · 부끄럼 · 불편
 enum FriendRelType {
-  best,    // 베프 🫀 — 실시간 정확 위치 공유
+  best,    // 베프 💖 — 실시간 정확 위치 공유
   normal,  // 부끄럼 🙈 — 동·반경 단위 대략 위치 (안개)
-  bad;     // 불편 🤫 — 마지막 위치 고정 (얼음/오프라인)
+  bad;     // 잠수 🥷 — 마지막 위치 고정 (얼음/오프라인)
 
   String get value => name;
   String get label => switch (this) {
@@ -30,9 +30,9 @@ enum FriendRelType {
         FriendRelType.bad => '잠수',
       };
   String get emoji => switch (this) {
-        FriendRelType.best => '🫀',
+        FriendRelType.best => '💖',
         FriendRelType.normal => '🙈',
-        FriendRelType.bad => '🤫',
+        FriendRelType.bad => '🥷',
       };
 
   static FriendRelType fromString(String? s) => switch (s) {
@@ -45,9 +45,9 @@ enum FriendRelType {
 
 /// 개별 친구 오버라이드 — 그룹/마스터 설정보다 우선
 enum FriendIndividualMode {
-  precise, // 📍 항상 정확히 공유 (베프 강제)
-  ice,     // 🤫 항상 잠수 (얼음·오프라인 강제)
-  inherit; // 🔄 그룹 설정 따름 (기본값)
+  precise, // 🎯 항상 정확히 공유 (베프 강제)
+  ice,     // 🥷 항상 잠수 (얼음·오프라인 강제)
+  inherit; // 🔗 그룹 설정 따름 (기본값)
 
   String get value => name;
   String get label => switch (this) {
@@ -56,9 +56,9 @@ enum FriendIndividualMode {
         FriendIndividualMode.inherit => '그룹 설정 따름',
       };
   String get emoji => switch (this) {
-        FriendIndividualMode.precise => '📍',
-        FriendIndividualMode.ice => '🤫',
-        FriendIndividualMode.inherit => '🔄',
+        FriendIndividualMode.precise => '🎯',
+        FriendIndividualMode.ice => '🥷',
+        FriendIndividualMode.inherit => '🔗',
       };
 
   static FriendIndividualMode fromString(String? s) => switch (s) {

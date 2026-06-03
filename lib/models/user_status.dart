@@ -63,9 +63,9 @@ enum PrivacyMode {
       };
 
   String get emoji => switch (this) {
-        PrivacyMode.precise => '🫀',
+        PrivacyMode.precise => '💖',
         PrivacyMode.fog => '🙈',
-        PrivacyMode.ice => '🤫',
+        PrivacyMode.ice => '🥷',
       };
 
   String get description => switch (this) {

@@ -2579,9 +2579,9 @@ class _PrivacyInfoCard extends StatelessWidget {
     }
     // 그룹 적용
     return switch (theirView!.relType) {
-      FriendRelType.best => '$name님이 당신을 베프 🫀 그룹으로 설정',
+      FriendRelType.best => '$name님이 당신을 베프 💖 그룹으로 설정',
       FriendRelType.normal => '$name님이 당신을 부끄럼 🙈 그룹으로 설정',
-      FriendRelType.bad => '$name님이 당신을 잠수 🤫 그룹으로 설정',
+      FriendRelType.bad => '$name님이 당신을 잠수 🥷 그룹으로 설정',
     };
   }
 

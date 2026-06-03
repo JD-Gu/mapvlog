@@ -61,7 +61,7 @@ class FriendGroupsScreen extends StatelessWidget {
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800)),
                     SizedBox(height: 6),
-                    Text('🫀 베프 — 실시간 정확 위치 공유',
+                    Text('💖 베프 — 실시간 정확 위치 공유',
                         style: TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary)),
@@ -69,7 +69,7 @@ class FriendGroupsScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary)),
-                    Text('🤫 잠수 — 숨김/고정 · 오프라인 및 마지막 위치 고정',
+                    Text('🥷 잠수 — 숨김/고정 · 오프라인 및 마지막 위치 고정',
                         style: TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary)),

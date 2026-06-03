@@ -3,14 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// 그룹별 위치 권한 모드 — 친구그루핑정책.md
 /// 통일된 3-mode 용어: 베프 · 부끄럼 · 불편
 enum GroupMode {
-  /// 🫀 베프 — 실시간 정확 위치 공유 (구 "인싸")
-  insider('insider', '베프', '🫀', '실시간 정확 위치 공유'),
+  /// 💖 베프 — 실시간 정확 위치 공유 (구 "인싸")
+  insider('insider', '베프', '💖', '실시간 정확 위치 공유'),
 
   /// 🙈 부끄럼 — 행정동/반경 마스킹
   shy('shy', '부끄럼', '🙈', '동·반경 단위 대략 위치'),
 
-  /// 🤫 잠수 — 숨김/고정 (오프라인 상태 및 마지막 위치 고정)
-  uneasy('uneasy', '잠수', '🤫', '숨김/고정 · 오프라인 및 마지막 위치 고정');
+  /// 🥷 잠수 — 숨김/고정 (오프라인 상태 및 마지막 위치 고정)
+  uneasy('uneasy', '잠수', '🥷', '숨김/고정 · 오프라인 및 마지막 위치 고정');
 
   final String value;
   final String label;
