@@ -2,11 +2,9 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/friend_group.dart';
@@ -17,9 +15,8 @@ import '../../screens/live_map/live_map_screen.dart';
 import '../../screens/map/map_screen.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../screens/search/search_screen.dart';
-import '../../screens/vlog/vlog_player_screen.dart';
+import '../../screens/vlog/vlog_edit_screen.dart';
 import '../../screens/vlog/vlog_player_swiper_screen.dart';
-import '../../services/firebase_storage_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/friend_group_service.dart';
 import '../../services/friend_service.dart';
@@ -27,8 +24,6 @@ import '../../services/location_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/marker_emojis.dart';
 import '../../widgets/check_in_sheet.dart';
-import '../../widgets/emoji_picker_row.dart';
-import '../../utils/photo_utils.dart';
 import '../../utils/sheets.dart';
 import '../../widgets/marquee_slogan.dart';
 import '../../widgets/notifications_sheet.dart';
@@ -322,8 +317,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  static const _maxPhotos = 5;
-
   /// 공개 범위 변경 시트 + Firestore 갱신
   Future<void> _changeVisibility(Vlog vlog) async {
     final initial = VisibilitySelection(
@@ -367,277 +360,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await CheckInSheet.open(context, editing: vlog);
       return;
     }
-    final titleCtrl = TextEditingController(text: vlog.title);
-    final placeCtrl = TextEditingController(text: vlog.placeName);
-    String selectedEmoji = vlog.markerEmoji ?? MarkerEmojis.defaultEmoji;
-
-    // 사진 vlog인 경우 편집 가능한 사진 상태
-    final isPhotoVlog = vlog.isPhoto && !vlog.hasVideo;
-    final originalUrls = List<String>.from(vlog.displayPhotoUrls);
-    final currentUrls = List<String>.from(originalUrls);
-    final List<XFile> newPhotos = [];
-    final List<Uint8List?> newPhotoPreviews = [];
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dlgCtx) => StatefulBuilder(
-        builder: (dlgCtx, setDlg) {
-          final totalCount = currentUrls.length + newPhotos.length;
-
-          Future<void> addPhotos() async {
-            final picker = ImagePicker();
-            try {
-              final added = await picker.pickMultiImage(
-                  limit: _maxPhotos - totalCount);
-              if (added.isEmpty) return;
-              final previews = await Future.wait(added.map((f) async {
-                try {
-                  return await f.readAsBytes();
-                } catch (_) {
-                  return null;
-                }
-              }));
-              setDlg(() {
-                newPhotos.addAll(added);
-                newPhotoPreviews.addAll(previews);
-              });
-            } catch (_) {}
-          }
-
-          return AlertDialog(
-            titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            title: Row(children: [
-              Icon(
-                  isPhotoVlog ? Icons.photo_library : Icons.edit,
-                  color: const Color(0xFFF57C00),
-                  size: 20),
-              const SizedBox(width: 8),
-              Text(
-                isPhotoVlog
-                    ? '사진 수정 ($totalCount/$_maxPhotos)'
-                    : '기록 수정',
-                style: const TextStyle(fontSize: 16),
-              ),
-            ]),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── 사진 편집 스트립 (사진 vlog만) ────────────────────
-                    if (isPhotoVlog) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 80,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            // 기존 URL 썸네일들
-                            for (int i = 0; i < currentUrls.length; i++)
-                              _PhotoChip(
-                                index: i,
-                                imageWidget: Image.network(
-                                  currentUrls[i],
-                                  fit: BoxFit.cover,
-                                ),
-                                showRemove: totalCount > 1,
-                                onRemove: () => setDlg(() {
-                                  currentUrls.removeAt(i);
-                                }),
-                              ),
-                            // 새로 추가한 XFile 썸네일들
-                            for (int i = 0; i < newPhotos.length; i++)
-                              _PhotoChip(
-                                index: currentUrls.length + i,
-                                imageWidget: newPhotoPreviews[i] != null
-                                    ? Image.memory(
-                                        newPhotoPreviews[i]!,
-                                        fit: BoxFit.cover)
-                                    : const Icon(Icons.photo,
-                                        color: AppColors.textDisabled),
-                                showRemove: totalCount > 1,
-                                isNew: true,
-                                onRemove: () => setDlg(() {
-                                  newPhotos.removeAt(i);
-                                  newPhotoPreviews.removeAt(i);
-                                }),
-                              ),
-                            // + 추가 버튼
-                            if (totalCount < _maxPhotos)
-                              GestureDetector(
-                                onTap: addPhotos,
-                                child: Container(
-                                  width: 72,
-                                  height: 72,
-                                  margin: const EdgeInsets.only(right: 6),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.5),
-                                      width: 1.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.add_photo_alternate,
-                                          color: AppColors.primary, size: 22),
-                                      SizedBox(height: 2),
-                                      Text('추가',
-                                          style: TextStyle(
-                                              fontSize: 10,
-                                              color: AppColors.primary)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-                    TextField(
-                      controller: titleCtrl,
-                      decoration: const InputDecoration(
-                          labelText: '제목 *', border: OutlineInputBorder()),
-                      autofocus: !isPhotoVlog,
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: placeCtrl,
-                      decoration: const InputDecoration(
-                          labelText: '장소명 *',
-                          border: OutlineInputBorder()),
-                      textInputAction: TextInputAction.done,
-                    ),
-                    const SizedBox(height: 16),
-                    EmojiPickerRow(
-                      selected: selectedEmoji,
-                      onPick: (e) => setDlg(() => selectedEmoji = e),
-                      maxHeight: 200,
-                      suggestionText:
-                          '${titleCtrl.text} ${placeCtrl.text}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dlgCtx, false),
-                child: const Text('취소'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dlgCtx, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('저장'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    final newTitle = titleCtrl.text.trim();
-    final newPlace = placeCtrl.text.trim();
-    titleCtrl.dispose();
-    placeCtrl.dispose();
-
-    if (confirmed != true || newTitle.isEmpty || newPlace.isEmpty) return;
-
-    // 사진 vlog: 최소 1장 보장
-    if (isPhotoVlog &&
-        currentUrls.isEmpty &&
-        newPhotos.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('사진은 최소 1장 이상 필요합니다'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-      return;
-    }
-
-    // 사진 변경 감지
-    final hasPhotoChange = isPhotoVlog &&
-        (newPhotos.isNotEmpty ||
-            currentUrls.length != originalUrls.length);
-
-    try {
-      List<String>? finalUrls;
-      String? finalThumb;
-
-      if (hasPhotoChange) {
-        // 1) 새 사진 업로드
-        final user = FirebaseAuth.instance.currentUser;
-        final userId = user?.uid ?? 'anonymous';
-        final id = DateTime.now().millisecondsSinceEpoch.toString();
-        final List<String> uploadedNewUrls = [];
-
-        for (int i = 0; i < newPhotos.length; i++) {
-          final bytes = await correctPhotoRotation(newPhotos[i]);
-          final storagePath = FirebaseStorageService.photoPath(
-              userId, '${id}_edit_${i + 1}.jpg');
-          final url = await FirebaseStorageService.uploadBytes(
-            bytes: bytes,
-            path: storagePath,
-            contentType: 'image/jpeg',
-          );
-          uploadedNewUrls.add(url);
-        }
-
-        // 2) 최종 URL 목록 = 유지된 기존 + 새로 업로드
-        finalUrls = [...currentUrls, ...uploadedNewUrls];
-        finalThumb = finalUrls.isNotEmpty ? finalUrls.first : '';
-
-        // 3) 제거된 기존 URL Storage에서 삭제 (best effort)
-        final removedUrls =
-            originalUrls.where((u) => !currentUrls.contains(u)).toList();
-        for (final url in removedUrls) {
-          await FirestoreService.deletePhotoFromStorage(url);
-        }
-      }
-
-      // 4) Firestore 갱신
-      await FirestoreService.updateVlog(
-        id: vlog.id,
-        title: newTitle,
-        placeName: newPlace,
-        markerColor: MarkerEmojis.colorOf(selectedEmoji).toARGB32(),
-        markerEmoji: selectedEmoji,
-        photoUrls: finalUrls,
-        thumbnailUrl: finalThumb,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ 수정됐습니다'),
-            backgroundColor: AppColors.secondary,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('수정 실패: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
+    // 일반 사진·영상 브이로그는 단일 화면 수정 (마법사 컴포넌트 재사용)
+    await VlogEditScreen.open(context, vlog);
   }
 
   Future<void> _confirmDelete(Vlog vlog) async {
@@ -1336,96 +1060,6 @@ class _ErrorState extends StatelessWidget {
 }
 
 // ─── 스켈레톤 로딩 ───────────────────────────────────────────────────────────
-// ─── 편집 다이얼로그용 사진 칩 ────────────────────────────────────────────────
-class _PhotoChip extends StatelessWidget {
-  final int index;
-  final Widget imageWidget;
-  final bool showRemove;
-  final bool isNew;
-  final VoidCallback onRemove;
-  const _PhotoChip({
-    required this.index,
-    required this.imageWidget,
-    required this.showRemove,
-    required this.onRemove,
-    this.isNew = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          width: 72,
-          height: 72,
-          margin: const EdgeInsets.only(right: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            border: isNew
-                ? Border.all(
-                    color: AppColors.secondary.withValues(alpha: 0.7),
-                    width: 1.5)
-                : null,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: imageWidget,
-        ),
-        Positioned(
-          bottom: 3,
-          left: 3,
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text('${index + 1}',
-                style: const TextStyle(color: Colors.white, fontSize: 9)),
-          ),
-        ),
-        if (isNew)
-          Positioned(
-            top: 3,
-            left: 3,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('NEW',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700)),
-            ),
-          ),
-        if (showRemove)
-          Positioned(
-            top: 0,
-            right: 6,
-            child: GestureDetector(
-              onTap: onRemove,
-              child: Container(
-                width: 18,
-                height: 18,
-                decoration: const BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.close,
-                    color: Colors.white, size: 11),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _SkeletonSliver extends StatelessWidget {
   final bool isGrid;
   const _SkeletonSliver({required this.isGrid});
