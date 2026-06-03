@@ -151,8 +151,9 @@ exports.onCommentCreated = onDocumentCreated(
 
       const recipients = new Set();
 
-      // 답글이면 부모 댓글 작성자에게도
+      // 답글이면 같은 스레드(부모 댓글) 참여자 전원에게 알림
       if (c.parentId) {
+        // 1) 부모(최상위) 댓글 작성자
         const parentSnap = await db
             .collection("vlogs").doc(vlogId)
             .collection("comments").doc(c.parentId).get();
@@ -160,8 +161,18 @@ exports.onCommentCreated = onDocumentCreated(
           const pa = parentSnap.data().authorId;
           if (pa) recipients.add(pa);
         }
+        // 2) 같은 부모를 가진 다른 답글 작성자들 (스레드 대화 참여자)
+        const siblings = await db
+            .collection("vlogs").doc(vlogId)
+            .collection("comments")
+            .where("parentId", "==", c.parentId)
+            .get();
+        siblings.forEach((d) => {
+          const a = d.data().authorId;
+          if (a) recipients.add(a);
+        });
       }
-      // vlog 작성자
+      // vlog 작성자 (항상)
       if (vlog.authorId) recipients.add(vlog.authorId);
       // 본인 제외
       recipients.delete(commenter);
