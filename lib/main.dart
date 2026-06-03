@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -9,6 +10,7 @@ import 'utils/web_hash_stub.dart'
 
 import 'app.dart';
 import 'firebase_options.dart';
+import 'services/push_service.dart';
 
 /// 웹 딥링크 초기 fragment 값.
 /// 예: '/vlog/jfrBmRxQqUcbSzomB9YJ'
@@ -29,6 +31,9 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // FCM 백그라운드/종료 상태 메시지 핸들러 등록 (runApp 이전)
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   runApp(const MapVlogApp());
 }

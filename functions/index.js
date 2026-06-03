@@ -1,0 +1,178 @@
+/**
+ * PinFlick — FCM 푸시 발송 Cloud Functions (2nd gen, Firestore 트리거)
+ *
+ * 트리거:
+ *   1) users/{uid}/pings/{pingId}          → 호출(ping) 푸시
+ *   2) users/{uid}/friends/{friendUid}     → 친구 요청(incoming) 푸시
+ *   3) vlogs/{vlogId}/comments/{commentId} → 댓글/답글 푸시
+ *
+ * 토큰 위치: users/{uid}/fcmTokens/{token} { platform, updatedAt }
+ *   - platform === 'web'  → data-only (firebase-messaging-sw.js 가 표시)
+ *   - 그 외(android 등)    → notification + data (시스템 트레이 자동 표시)
+ */
+
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {setGlobalOptions} = require("firebase-functions/v2");
+const logger = require("firebase-functions/logger");
+const admin = require("firebase-admin");
+
+admin.initializeApp();
+setGlobalOptions({region: "asia-northeast3", maxInstances: 10});
+
+const db = admin.firestore();
+const messaging = admin.messaging();
+
+/** users/{uid}/fcmTokens 조회 → [{token, platform}] */
+async function getTokenDocs(uid) {
+  const snap = await db
+      .collection("users").doc(uid)
+      .collection("fcmTokens").get();
+  return snap.docs.map((d) => ({
+    token: d.id,
+    platform: (d.data().platform || ""),
+  }));
+}
+
+/**
+ * 한 사용자에게 푸시 발송 + 무효 토큰 정리
+ * @param {string} uid 수신자 UID
+ * @param {{type:string,title:string,body:string,emoji?:string,vlogId?:string}} p
+ */
+async function sendToUser(uid, p) {
+  if (!uid) return;
+  const tokenDocs = await getTokenDocs(uid);
+  if (tokenDocs.length === 0) return;
+
+  const data = {
+    type: p.type || "",
+    title: p.title || "",
+    body: p.body || "",
+    emoji: p.emoji || "",
+    vlogId: p.vlogId || "",
+  };
+
+  const messages = tokenDocs.map(({token, platform}) => {
+    if (platform === "web") {
+      // 웹: data-only → SW onBackgroundMessage 가 표시 (중복 방지)
+      return {token, data};
+    }
+    // Android 등: notification + data → 트레이 자동 표시
+    return {
+      token,
+      notification: {title: data.title, body: data.body},
+      data,
+      android: {priority: "high"},
+    };
+  });
+
+  let resp;
+  try {
+    resp = await messaging.sendEach(messages);
+  } catch (e) {
+    logger.error("sendEach 실패", e);
+    return;
+  }
+
+  // 무효 토큰 정리
+  const deletions = [];
+  resp.responses.forEach((r, i) => {
+    if (r.success) return;
+    const code = r.error && r.error.code;
+    if (
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token" ||
+      code === "messaging/invalid-argument"
+    ) {
+      deletions.push(
+          db.collection("users").doc(uid)
+              .collection("fcmTokens").doc(tokenDocs[i].token)
+              .delete().catch(() => {}),
+      );
+    }
+  });
+  await Promise.all(deletions);
+  logger.info(
+      `push→${uid} type=${data.type} sent=${resp.successCount}/${messages.length}`);
+}
+
+// ── 1) 호출(Ping) ────────────────────────────────────────────────────────────
+exports.onPingCreated = onDocumentCreated(
+    "users/{uid}/pings/{pingId}",
+    async (event) => {
+      const uid = event.params.uid;
+      const ping = event.data && event.data.data();
+      if (!ping) return;
+      const fromName = ping.fromName || "친구";
+      const emoji = ping.emoji || "📣";
+      await sendToUser(uid, {
+        type: "ping",
+        title: `${emoji} ${fromName}님의 호출`,
+        body: ping.message || "지금 어디야?",
+        emoji,
+      });
+    },
+);
+
+// ── 2) 친구 요청 ──────────────────────────────────────────────────────────────
+exports.onFriendDocCreated = onDocumentCreated(
+    "users/{uid}/friends/{friendUid}",
+    async (event) => {
+      const uid = event.params.uid;
+      const f = event.data && event.data.data();
+      // incoming(= 내가 받은 요청)일 때만 알림
+      if (!f || f.status !== "incoming") return;
+      const name = f.displayName || "누군가";
+      await sendToUser(uid, {
+        type: "friend_request",
+        title: "👋 새 친구 요청",
+        body: `${name}님이 친구 요청을 보냈어요`,
+        emoji: "👋",
+      });
+    },
+);
+
+// ── 3) 댓글/답글 ──────────────────────────────────────────────────────────────
+exports.onCommentCreated = onDocumentCreated(
+    "vlogs/{vlogId}/comments/{commentId}",
+    async (event) => {
+      const vlogId = event.params.vlogId;
+      const c = event.data && event.data.data();
+      if (!c) return;
+
+      const commenter = c.authorId;
+      const commenterName = c.authorName || "누군가";
+      const content = c.content || "";
+      const isReply = !!c.parentId;
+
+      const vlogSnap = await db.collection("vlogs").doc(vlogId).get();
+      if (!vlogSnap.exists) return;
+      const vlog = vlogSnap.data();
+
+      const recipients = new Set();
+
+      // 답글이면 부모 댓글 작성자에게도
+      if (c.parentId) {
+        const parentSnap = await db
+            .collection("vlogs").doc(vlogId)
+            .collection("comments").doc(c.parentId).get();
+        if (parentSnap.exists) {
+          const pa = parentSnap.data().authorId;
+          if (pa) recipients.add(pa);
+        }
+      }
+      // vlog 작성자
+      if (vlog.authorId) recipients.add(vlog.authorId);
+      // 본인 제외
+      recipients.delete(commenter);
+
+      await Promise.all([...recipients].map((uid) => sendToUser(uid, {
+        type: "comment",
+        title: isReply ?
+          `💬 ${commenterName}님의 답글` :
+          `💬 ${commenterName}님의 댓글`,
+        body: content,
+        emoji: "💬",
+        vlogId,
+      })));
+    },
+);

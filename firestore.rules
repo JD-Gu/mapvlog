@@ -123,6 +123,13 @@ service cloud.firestore {
                                             && request.auth.uid == userId;
       }
 
+      // ── fcmTokens 서브컬렉션 (푸시 토큰 — 본인만 read/write) ────────────
+      // Cloud Functions(Admin SDK)는 규칙을 우회하므로 발송 시 자유롭게 읽음
+      match /fcmTokens/{token} {
+        allow read, write: if request.auth != null
+                           && request.auth.uid == userId;
+      }
+
       // ── pings 서브컬렉션 (호출 알림) ─────────────────────────────────────
       // users/{me}/pings/{pingId}  ← 내게 온 ping
       match /pings/{pingId} {

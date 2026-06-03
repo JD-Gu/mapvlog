@@ -18,6 +18,7 @@ import 'screens/live_map/live_map_screen.dart';
 import 'screens/friends/friend_list_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/vlog/vlog_player_screen.dart';
+import 'services/push_service.dart';
 import 'services/user_status_service.dart';
 import 'services/web_version_check_service.dart';
 import 'utils/constants.dart';
@@ -42,6 +43,7 @@ class MapVlogApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, themeProv, _) => MaterialApp(
           title: 'PinFlick',
+          navigatorKey: rootNavigatorKey,
           debugShowCheckedModeBanner: false,
           themeMode: themeProv.mode,
           theme: _lightTheme,
@@ -181,6 +183,10 @@ class _MainShellState extends State<MainShell> {
     if (user == null) return;
     try {
       await UserStatusService.ensureUserDoc(user);
+    } catch (_) {}
+    // FCM 푸시 초기화 (권한요청 + 토큰 저장)
+    try {
+      await PushService.instance.init(user.uid);
     } catch (_) {}
     _pingsSub = UserStatusService.watchMyPings(user.uid).listen(_onPingsUpdate);
   }

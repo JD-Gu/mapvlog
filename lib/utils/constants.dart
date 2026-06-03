@@ -54,9 +54,18 @@ const Color kPolylineColor = Color(0xFF1A73E8);
 const int kPolylineWidth = 4;
 
 // 앱 버전 — pubspec.yaml 의 version 필드와 동기화 유지 (수동)
-const String kAppVersion = '1.49.0';
-const String kAppBuildNumber = '70';
+const String kAppVersion = '1.50.0';
+const String kAppBuildNumber = '71';
 const String kAppChannel = 'beta'; // 'beta' | 'stable'
+
+// ── FCM 푸시 ────────────────────────────────────────────────────────────────
+/// 웹 푸시용 VAPID 공개키 (Firebase 콘솔 → 프로젝트 설정 → Cloud Messaging →
+/// 웹 푸시 인증서에서 "키 쌍 생성" 후 그 값을 여기에 붙여넣으세요).
+/// 비워두면 웹에서는 토큰 발급이 비활성화됩니다(Android는 무관).
+const String kWebVapidKey = '';
+
+/// Android 기본 알림 채널 ID — AndroidManifest 의 default_notification_channel_id 와 일치해야 함
+const String kPushChannelId = 'pinflick_default';
 
 /// APK 다운로드 URL — 빌드번호 쿼리로 브라우저/다운로드매니저 캐시 우회
 /// remoteBuild 가 있으면 그 값을, 없으면 내장 빌드번호를 붙임

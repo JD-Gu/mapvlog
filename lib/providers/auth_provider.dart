@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../services/push_service.dart';
+
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -167,6 +169,11 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
+      // 로그아웃 전 이 기기의 FCM 토큰 제거 (다른 사람 알림 수신 방지)
+      final uid = _auth.currentUser?.uid;
+      if (uid != null) {
+        await PushService.instance.unregister(uid);
+      }
       if (!kIsWeb) {
         await GoogleSignIn().signOut();
       }
