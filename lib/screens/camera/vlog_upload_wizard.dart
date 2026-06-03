@@ -55,6 +55,11 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
   Uint8List? _videoThumb;
   int? _videoDurationSec;
   static const int _maxPhotos = 5;
+
+  // ── 동영상 업로드 가드 임계값 ──────────────────────────────────────
+  static const int _maxVideoSeconds = 60; // 녹화/길이 제한
+  static const int _webWarnMB = 60;       // 웹(압축 미지원) 경고 기준
+  static const int _hardWarnMB = 150;     // 최종 업로드 용량 경고 기준
   bool get _hasMedia => _photos.isNotEmpty || _video != null;
   bool get _isVideoMode => _video != null;
 
@@ -67,6 +72,8 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
   VisibilitySelection _vis = VisibilitySelection.public; // Step 4
 
   bool _uploading = false;
+  double _uploadProgress = 0; // 0~1 (0이면 비결정 인디케이터)
+  String _uploadStatus = '';  // "영상 압축 중...", "업로드 45%" 등
 
   @override
   void initState() {
@@ -344,7 +351,8 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
     try {
       final picked = await picker.pickVideo(
         source: source,
-        maxDuration: const Duration(minutes: 3),
+        // 녹화/길이 제한 — 용량 폭증 방지 (카메라 녹화 한정)
+        maxDuration: const Duration(seconds: _maxVideoSeconds),
       );
       if (picked == null || !mounted) return;
       // 사진 모드 비움
@@ -369,6 +377,11 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
           }
         } catch (_) {}
       }
+      // 원본 용량 측정 (웹/모바일 공용)
+      int? sizeBytes;
+      try {
+        sizeBytes = await picked.length();
+      } catch (_) {}
       if (!mounted) return;
 
       setState(() {
@@ -382,6 +395,9 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
       if (!kIsWeb && source == ImageSource.camera) {
         await _saveToGallery(videoPath: picked.path);
       }
+
+      // 업로드 전 용량/시간 가드
+      _guardVideo(durationSec: durationSec, sizeBytes: sizeBytes);
     } catch (e) {
       if (mounted) _toast('영상 처리 실패: $e');
     }
@@ -430,6 +446,24 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
     );
   }
 
+  String _fmtMB(int? bytes) =>
+      bytes == null ? '?' : '${(bytes / 1024 / 1024).toStringAsFixed(0)}MB';
+
+  /// 업로드 전 용량/시간 가드 — 너무 크거나 길면 경고 (차단하진 않음)
+  void _guardVideo({int? durationSec, int? sizeBytes}) {
+    final mb = sizeBytes == null ? 0 : sizeBytes / 1024 / 1024;
+    String? msg;
+    if (durationSec != null && durationSec > _maxVideoSeconds) {
+      msg = '영상이 길어요(${durationSec}초). $_maxVideoSeconds초 이하를 권장해요 — 업로드가 느릴 수 있어요.';
+    } else if (kIsWeb && mb > _webWarnMB) {
+      msg = '웹은 영상 압축을 못 해 그대로 올라가요(${_fmtMB(sizeBytes)}). '
+          '더 짧은 영상이나 앱(APK)에서 등록을 권장해요.';
+    } else if (mb > _hardWarnMB) {
+      msg = '영상 용량이 커요(${_fmtMB(sizeBytes)}). 업로드에 시간이 걸릴 수 있어요.';
+    }
+    if (msg != null) _toast('⚠️ $msg');
+  }
+
   Future<void> _publish() async {
     if (_uploading) return;
     final user = FirebaseAuth.instance.currentUser;
@@ -439,7 +473,11 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
     }
     if (!_hasMedia) return;
 
-    setState(() => _uploading = true);
+    setState(() {
+      _uploading = true;
+      _uploadProgress = 0;
+      _uploadStatus = '준비 중...';
+    });
     HapticFeedback.mediumImpact();
     try {
       String? videoUrl;
@@ -451,13 +489,21 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
 
       if (_isVideoMode) {
         // ─── 영상 모드 ─────────────────────────────────────
-        // 1) 영상 압축 (모바일만)
+        // 1) 영상 압축 (모바일만) — 긴 영상은 더 강하게 압축
         String videoPath = _video!.path;
         if (!kIsWeb) {
+          setState(() {
+            _uploadProgress = 0;
+            _uploadStatus = '영상 압축 중...';
+          });
           try {
+            // 30초 초과 영상은 LowQuality 로 더 강하게 압축
+            final quality = (_videoDurationSec ?? 0) > 30
+                ? VideoQuality.LowQuality
+                : VideoQuality.MediumQuality;
             final info = await VideoCompress.compressVideo(
               videoPath,
-              quality: VideoQuality.MediumQuality,
+              quality: quality,
               deleteOrigin: false,
               includeAudio: true,
             );
@@ -465,17 +511,27 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
           } catch (e) {
             debugPrint('영상 압축 실패 → 원본 업로드: $e');
           }
+          // 압축 후 최종 용량 경고
+          try {
+            final finalBytes = await XFile(videoPath).length();
+            if (finalBytes / 1024 / 1024 > _hardWarnMB) {
+              _toast('⚠️ 압축 후에도 ${_fmtMB(finalBytes)} 로 커요 — 업로드가 오래 걸릴 수 있어요.');
+            }
+          } catch (_) {}
         }
-        // 2) 영상 업로드
+        // 2) 영상 업로드 (진행률 표시)
         final vFile = XFile(videoPath);
         final vName = '${ts}_${title.hashCode}.mp4';
+        setState(() => _uploadStatus = '영상 업로드 중...');
         videoUrl = await FirebaseStorageService.uploadXFile(
           xfile: vFile,
           path: FirebaseStorageService.videoPath(user.uid, vName),
           contentType: 'video/mp4',
+          onProgress: _onUploadProgress,
         );
         // 3) 썸네일 업로드
         if (_videoThumb != null) {
+          setState(() => _uploadStatus = '썸네일 업로드 중...');
           thumbnailUrl = await FirebaseStorageService.uploadBytes(
             bytes: _videoThumb!,
             path: FirebaseStorageService.thumbnailPath(
@@ -490,16 +546,22 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
       } else {
         // ─── 사진 모드 (1~5장) ─────────────────────────────
         for (int i = 0; i < _photos.length; i++) {
+          setState(() {
+            _uploadStatus = '사진 업로드 중 (${i + 1}/${_photos.length})';
+            _uploadProgress = 0;
+          });
           final filename = '${ts}_${i}_${title.hashCode}.jpg';
           final url = await FirebaseStorageService.uploadXFile(
             xfile: _photos[i],
             path: FirebaseStorageService.photoPath(user.uid, filename),
             contentType: 'image/jpeg',
+            onProgress: _onUploadProgress,
           );
           photoUrls.add(url);
         }
         thumbnailUrl = photoUrls.first;
       }
+      if (mounted) setState(() => _uploadStatus = '등록 마무리 중...');
 
       // 4) Firestore 저장
       await FirestoreService.createVlog(
@@ -543,8 +605,23 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
       ));
     } catch (e) {
       if (!mounted) return;
-      setState(() => _uploading = false);
-      _toast('등록 실패: $e');
+      setState(() {
+        _uploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+      // 미디어는 그대로 보존 — '핀 올리기'를 다시 누르면 재시도됨
+      _toast('업로드에 실패했어요 😢 잠시 후 "핀 올리기"로 다시 시도해 주세요.');
+      debugPrint('publish 실패: $e');
+    }
+  }
+
+  /// 업로드 진행률 콜백 (1% 단위 throttle)
+  void _onUploadProgress(int sent, int total) {
+    if (!mounted || total <= 0) return;
+    final p = sent / total;
+    if (p > _uploadProgress + 0.01 || p >= 1.0) {
+      setState(() => _uploadProgress = p);
     }
   }
 
@@ -640,6 +717,8 @@ class _VlogUploadWizardState extends State<VlogUploadWizard> {
                     visibility: _vis,
                     onVisibilityChanged: (v) => setState(() => _vis = v),
                     uploading: _uploading,
+                    uploadProgress: _uploadProgress,
+                    uploadStatus: _uploadStatus,
                     onPublish: _publish,
                   ),
                 ],
@@ -1242,6 +1321,8 @@ class _Step4Publish extends StatelessWidget {
   final VisibilitySelection visibility;
   final ValueChanged<VisibilitySelection> onVisibilityChanged;
   final bool uploading;
+  final double uploadProgress;
+  final String uploadStatus;
   final VoidCallback onPublish;
   const _Step4Publish({
     required this.photoBytes,
@@ -1255,6 +1336,8 @@ class _Step4Publish extends StatelessWidget {
     required this.visibility,
     required this.onVisibilityChanged,
     required this.uploading,
+    required this.uploadProgress,
+    required this.uploadStatus,
     required this.onPublish,
   });
 
@@ -1403,6 +1486,41 @@ class _Step4Publish extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
+          // 업로드 진행 상태 (압축/업로드 % + 막대)
+          if (uploading) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    uploadStatus.isEmpty ? '등록 중...' : uploadStatus,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                if (uploadProgress > 0)
+                  Text('${(uploadProgress * 100).round()}%',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: uploadProgress > 0 ? uploadProgress : null,
+                minHeight: 6,
+                backgroundColor:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
