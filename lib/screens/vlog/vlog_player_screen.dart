@@ -5,7 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, PointerScrollEvent;
+    show
+        PointerDeviceKind,
+        PointerScrollEvent,
+        EagerGestureRecognizer,
+        OneSequenceGestureRecognizer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
@@ -1599,6 +1603,12 @@ class _VlogPlayerScreenState extends State<VlogPlayerScreen> {
             target: center,
             zoom: 15,
           ),
+          // 스와이프(PageView)가 지도 제스처를 가로채지 않도록 —
+          // 지도 위 드래그·핀치는 지도가 우선 처리.
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+                () => EagerGestureRecognizer()),
+          },
           polylines: _polylines,
           markers: _markers,
           mapType: _mapType,
