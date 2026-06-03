@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/vlog.dart';
 import '../services/firestore_service.dart';
+import '../services/geocoding_service.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../utils/marker_emojis.dart';
@@ -139,19 +140,30 @@ class _CheckInViewState extends State<_CheckInView> {
   }
 
   /// 좌표 → 주소 변환 (실패해도 무시 — 좌표만 있어도 체크인 가능)
+  /// 웹/모바일 공용: Nominatim(GeocodingService) 우선, 모바일은 기기 Geocoder fallback.
   Future<void> _reverseGeocode(Position pos) async {
-    if (kIsWeb) return; // 웹은 미지원
     try {
-      final places = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (!mounted || places.isEmpty) return;
-      final p = places.first;
-      final parts = [
-        if (p.administrativeArea?.isNotEmpty ?? false) p.administrativeArea,
-        if (p.subLocality?.isNotEmpty ?? false) p.subLocality,
-        if (p.thoroughfare?.isNotEmpty ?? false) p.thoroughfare,
-      ].whereType<String>().toList();
-      if (parts.isEmpty) return;
-      setState(() => _address = parts.join(' '));
+      // 1) Nominatim 도로명 주소 (웹 포함 동작)
+      final addr = await GeocodingService.reverseToRoadAddress(
+          pos.latitude, pos.longitude);
+      if (mounted && addr != null && addr.isNotEmpty) {
+        setState(() => _address = addr);
+        return;
+      }
+      // 2) 모바일 fallback — 기기 Geocoder
+      if (!kIsWeb) {
+        final places =
+            await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (!mounted || places.isEmpty) return;
+        final p = places.first;
+        final parts = [
+          if (p.administrativeArea?.isNotEmpty ?? false) p.administrativeArea,
+          if (p.subLocality?.isNotEmpty ?? false) p.subLocality,
+          if (p.thoroughfare?.isNotEmpty ?? false) p.thoroughfare,
+        ].whereType<String>().toList();
+        if (parts.isEmpty) return;
+        setState(() => _address = parts.join(' '));
+      }
     } catch (_) {
       // 실패 무시
     }
