@@ -1,248 +1,129 @@
 # 06. 디자인 가이드
 
-> ℹ️ **PinFlick 기준 안내** — 서비스명이 *MapVlog → PinFlick* 으로 변경되었고, 친구 위치 공유 중심으로 피벗했습니다. 일부 내용은 초기 기획이라 현재 구현과 다를 수 있습니다. 최신 기준은 루트 `CLAUDE.md` 와 `docs/01,05,09` 를 참고하세요.
-
-
-## 개요
-
-MapVlog의 UI/UX 디자인 원칙과 Flutter 구현을 위한 디자인 시스템을 정의합니다.
+PinFlick의 UI/UX 디자인 시스템입니다. 상수는 `lib/utils/constants.dart`(`AppColors`/`AppSpacing`/`AppRadius`/`AppShadow`) 기준.
 
 ---
 
 ## 1. 디자인 원칙
 
-**심플하고 직관적인 UX**
-현장에서 빠르게 촬영하고 기록할 수 있도록 핵심 액션을 최소 탭으로 도달 가능하게 설계합니다.
-
-**지도 중심 UI**
-지도가 항상 메인 뷰에 위치하며, 콘텐츠는 지도 위 오버레이 또는 하단 시트로 표현합니다.
-
-**모바일 퍼스트**
-모바일 UX를 기준으로 설계하고, Flutter Web은 반응형으로 확장합니다.
-
-**일관된 컴포넌트**
-공통 위젯을 재사용하여 화면 간 시각적 일관성을 유지합니다.
+- **친구·지도 중심**: 친구의 실시간 위치 지도가 핵심. 콘텐츠는 지도 오버레이 + 하단 시트로.
+- **빠른 액션**: 체크인/등록은 가운데 ➕ FAB로 최소 탭 도달 (탭=등록, 롱프레스=체크인).
+- **모바일 퍼스트 + 웹 반응형**: 동일 코드로 Android·Web(PWA).
+- **다크모드 우선 색상**: 텍스트/아이콘 색은 `Theme.of(context).colorScheme.*` 사용. 고정 `AppColors.textPrimary` 등을 직접 쓰면 다크모드에서 안 보이므로 지양.
+- **컴포넌트 재사용**: `CheckInSheet`·`MapPickerSheet`·`EmojiPickerRow`·`VisibilityPickerChip` 등 공용화.
 
 ---
 
-## 2. 컬러 팔레트
+## 2. 컬러 팔레트 (AppColors)
 
-### 메인 컬러
+| 이름 | Code | 용도 |
+|------|------|------|
+| primary | `#1A73E8` | 버튼·링크·강조 |
+| secondary | `#34A853` | 성공·체크인 완료 |
+| error | `#EA4335` | 오류·삭제·좋아요(채움) |
+| background | `#F8F9FA` | 라이트 배경 |
+| surface | `#FFFFFF` | 카드·시트 |
+| textPrimary | `#202124` | 본문 |
+| textSecondary | `#5F6368` | 부연 |
+| textDisabled | `#BDC1C6` | 비활성 |
 
-| 이름 | Color Code | Dart 코드 | 용도 |
-|------|-----------|-----------|------|
-| Primary | `#1A73E8` | `Color(0xFF1A73E8)` | 버튼, 링크, 강조 |
-| Secondary | `#34A853` | `Color(0xFF34A853)` | 성공, GPS 활성, 녹화 상태 |
-| Error | `#EA4335` | `Color(0xFFEA4335)` | 오류, 경고, 삭제 |
-| Warning | `#FBBC04` | `Color(0xFFFBBC04)` | 주의, GPS 약신호 |
+### 다크모드 (정식 지원)
+`ThemeProvider` + `ColorScheme.dark` 기반. 다크 배경 `#121316`, 서피스 `#1C1D21`, surfaceVariant `#26282E`.
+→ 색상은 반드시 `colorScheme.onSurface / onSurfaceVariant / surface / outline` 등을 사용.
 
-### 배경 / 서피스
+### 위치 공개 모드 팔레트 (브랜드 요소)
+| 모드 | 이모지 | 의미 |
+|------|--------|------|
+| 베프 | 💖 | 실시간 정확 위치 |
+| 부끄럼 | 🙈 | 동·반경 대략(안개) |
+| 잠수 | 🥷 | 숨김/고정 |
+| (개별) 항상 정확 / 항상 잠수 / 그룹 따름 | 🎯 / 🥷 / 🔗 | 친구별 오버라이드 |
 
-| 이름 | Color Code | Dart 코드 | 용도 |
-|------|-----------|-----------|------|
-| Background | `#F8F9FA` | `Color(0xFFF8F9FA)` | 앱 전체 배경 |
-| Surface | `#FFFFFF` | `Color(0xFFFFFFFF)` | 카드, 바텀시트 |
-| Surface Variant | `#F1F3F4` | `Color(0xFFF1F3F4)` | 입력창 배경 |
-
-### 텍스트
-
-| 이름 | Color Code | Dart 코드 | 용도 |
-|------|-----------|-----------|------|
-| Text Primary | `#202124` | `Color(0xFF202124)` | 본문, 제목 |
-| Text Secondary | `#5F6368` | `Color(0xFF5F6368)` | 부제목, 설명 |
-| Text Disabled | `#BDC1C6` | `Color(0xFFBDC1C6)` | 비활성 텍스트 |
-
-### 다크모드 대응 (Phase 2)
-
-다크모드는 Phase 2에서 구현하며, Flutter ThemeData의 `ColorScheme.dark()`를 활용합니다.
+### 하단 탭 컬러 (탭별)
+홈 `#1A73E8`(블루) · 친구지도 `#00ACC1`(시안) · 갤러리 `#7C4DFF`(퍼플) · 친구 `#EC407A`(핑크).
+선택 탭은 **해당 컬러 알약(alpha 0.15) 배경 + 확대** 로 강조.
 
 ---
 
-## 3. 타이포그래피
-
-Flutter `TextStyle` 기준으로 정의합니다. 기본 폰트는 시스템 기본값 사용 (Korean: Noto Sans KR 권장).
-
-| 스타일명 | fontSize | fontWeight | color | 용도 |
-|---------|----------|-----------|-------|------|
-| headlineLarge | 28 | Bold (700) | Text Primary | 페이지 제목 |
-| headlineMedium | 22 | SemiBold (600) | Text Primary | 섹션 제목 |
-| titleLarge | 18 | SemiBold (600) | Text Primary | 카드 제목, 앱바 |
-| titleMedium | 16 | Medium (500) | Text Primary | 리스트 항목 제목 |
-| bodyLarge | 16 | Regular (400) | Text Primary | 본문 텍스트 |
-| bodyMedium | 14 | Regular (400) | Text Secondary | 설명, 부연 |
-| labelLarge | 14 | Medium (500) | Primary | 버튼 텍스트 |
-| labelSmall | 12 | Regular (400) | Text Secondary | 태그, 타임스탬프 |
-
----
-
-## 4. 간격 시스템 (Spacing)
-
-8dp 기반 간격 시스템을 사용합니다.
+## 3. 간격 / 반경 / 그림자 (constants.dart)
 
 ```dart
-// utils/constants.dart
-class AppSpacing {
-  static const double xs  = 4.0;
-  static const double sm  = 8.0;
-  static const double md  = 16.0;
-  static const double lg  = 24.0;
-  static const double xl  = 32.0;
-  static const double xxl = 48.0;
-}
+class AppSpacing { xs=4, sm=8, md=16, lg=24, xl=32, xxl=48 }
+class AppRadius  { sm=8, md=12, lg=16, full=999 }   // 카드=md, 시트=lg, 알약/원형=full
+class AppShadow  { card(blur8 y2), elevated(blur16 y4) }
 ```
 
 ---
 
-## 5. 모서리 반경 (Border Radius)
+## 4. 타이포그래피
+
+시스템 기본 폰트(Noto Sans KR 권장). 제목 `w800`, 카드 제목 `w700`, 본문 14~16 `w400~500`, 메타/타임스탬프 11~12 `textSecondary`.
+
+---
+
+## 5. 아이콘 (하단 네비 등)
+
+| 기능 | Material Icon |
+|------|---------------|
+| 홈 | `home` / `home_outlined` |
+| 친구지도 | `map` / `map_outlined` ← (구 groups, 친구 아이콘과 혼동되어 변경) |
+| 등록(FAB) | `add` (➕, 중앙 docked) |
+| 갤러리 | `photo_library` / `_outlined` |
+| 친구 | `people` / `people_outline` |
+| 좋아요 | `favorite` / `favorite_outline` (채움=error) |
+| 저장 | `bookmark` / `bookmark_border` (채움=`#FFC107`) |
+| 댓글·공유 | `mode_comment_outlined` · `send_outlined` |
+| 호출 | `notifications_active` |
+
+---
+
+## 6. 버튼 / FAB
+
+- **Primary**: `FilledButton`/`ElevatedButton` — bg `primary`, 흰 글씨, 높이 50~52, radius `md`.
+- **중앙 FAB**: `PulsingFab` (centerDocked) — 탭=등록 마법사, 롱프레스=체크인. BottomAppBar 노치와 결합.
+- 지도 위 칩/버튼: surface 배경 + 그림자, radius `full`.
+
+---
+
+## 7. 지도 스타일
 
 ```dart
-class AppRadius {
-  static const double sm   = 8.0;   // 작은 버튼, 태그
-  static const double md   = 12.0;  // 카드, 입력창
-  static const double lg   = 16.0;  // 바텀시트, 다이얼로그
-  static const double full = 999.0; // 원형 버튼
-}
+// 친구 아바타 마커: 커스텀 비트맵(아바타 + 컬러 링 + 꼬리 꼭지점) — anchor 가 꼭지점=실좌표
+// 체크인 마커: 작은 이모지 버블 (anchor 중앙)
+// 폴리라인(플레이어 이동경로): primary, width 4
+// 바텀시트/스와이퍼 내부 GoogleMap 은 EagerGestureRecognizer 로 제스처 우선 점유
 ```
 
 ---
 
-## 6. 그림자 (Shadow)
+## 8. 애니메이션
 
-```dart
-class AppShadow {
-  static const List<BoxShadow> card = [
-    BoxShadow(
-      color: Color(0x1A000000),
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
-  ];
-
-  static const List<BoxShadow> elevated = [
-    BoxShadow(
-      color: Color(0x26000000),
-      blurRadius: 16,
-      offset: Offset(0, 4),
-    ),
-  ];
-}
-```
+| 유형 | Duration | Curve |
+|------|----------|-------|
+| 페이지 전환 | 300ms | easeInOut |
+| 바텀시트 | 250ms | easeOut |
+| 탭 알약/선택 | 220~240ms | easeOut / easeOutBack |
+| 좋아요·리액션 | 120~180ms | easeOutBack |
+| 마커 펄스/코치마크 | 260ms | easeOut |
 
 ---
 
-## 7. 아이콘
+## 9. 반응형 (Web)
 
-Material Icons를 기본으로 사용하며, 커스텀 아이콘 필요 시 SVG 에셋으로 추가합니다.
-
-| 기능 | 아이콘 | Material Icon 이름 |
-|------|--------|-------------------|
-| 홈 | 🏠 | `Icons.home` |
-| 지도 | 🗺 | `Icons.map` |
-| 촬영 | 📷 | `Icons.videocam` |
-| 갤러리 | 🖼 | `Icons.photo_library` |
-| 프로필 | 👤 | `Icons.person` |
-| 위치 마커 | 📍 | `Icons.location_on` |
-| 재생 | ▶ | `Icons.play_arrow` |
-| 좋아요 | ♥ | `Icons.favorite` |
-| 공유 | 📤 | `Icons.share` |
-| GPS 활성 | 🛰 | `Icons.gps_fixed` |
-| GPS 비활성 | | `Icons.gps_not_fixed` |
+| 브레이크포인트 | 레이아웃 |
+|--------------|---------|
+| Mobile < 600 | 단일 컬럼 + 하단 탭 |
+| Tablet 600~900 | 넓은 카드/그리드 |
+| Desktop > 900 | 중앙 정렬 컨테이너 |
 
 ---
 
-## 8. 버튼 스타일
+## 10. 접근성
 
-### Primary Button
-
-```dart
-ElevatedButton(
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Color(0xFF1A73E8),
-    foregroundColor: Colors.white,
-    minimumSize: Size(double.infinity, 52),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
-  ),
-)
-```
-
-### Secondary Button (Outlined)
-
-```dart
-OutlinedButton(
-  style: OutlinedButton.styleFrom(
-    foregroundColor: Color(0xFF1A73E8),
-    side: BorderSide(color: Color(0xFF1A73E8)),
-    minimumSize: Size(double.infinity, 52),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
-  ),
-)
-```
-
-### FAB (촬영 버튼)
-
-```dart
-FloatingActionButton.large(
-  backgroundColor: Color(0xFFEA4335),  // 녹화 시작 전: Primary
-  // 녹화 중: Color(0xFFEA4335) 빨강
-  shape: CircleBorder(),
-)
-```
+- 터치 영역 최소 48×48
+- 텍스트 대비 WCAG AA(4.5:1) 이상 — 다크모드 colorScheme 준수
+- 이미지 `semanticLabel`, 동적 폰트 크기 대응
 
 ---
 
-## 9. 지도 스타일
-
-Google Maps API 커스텀 스타일을 적용하여 MapVlog 브랜드와 어울리는 지도를 제공합니다.
-
-```dart
-// 지도 마커 크기 기준
-const double kVlogMarkerSize = 48.0;   // 브이로그 마커
-const double kPhotoMarkerSize = 36.0;  // 사진 마커 (미니 썸네일)
-
-// 경로 폴리라인 스타일
-const Color kPolylineColor = Color(0xFF1A73E8);
-const int kPolylineWidth = 4;
-```
-
----
-
-## 10. 애니메이션 가이드
-
-Flutter 공식 애니메이션 가이드 기반으로 자연스럽고 빠른 전환을 사용합니다.
-
-| 유형 | Duration | Curve | 용도 |
-|------|----------|-------|------|
-| 페이지 전환 | 300ms | easeInOut | 화면 전환 |
-| 마커 이동 | 150ms | easeOut | 지도 마커 이동 |
-| 바텀시트 | 250ms | easeOut | 바텀시트 표시 |
-| 팝업 | 200ms | easeIn | 팝업 등장 |
-| 좋아요 | 100ms | bounceOut | 좋아요 아이콘 |
-
----
-
-## 11. 반응형 레이아웃 (Flutter Web)
-
-| 브레이크포인트 | 너비 | 레이아웃 |
-|--------------|------|---------|
-| Mobile | < 600px | 단일 컬럼, 하단 탭바 |
-| Tablet | 600px ~ 900px | 2컬럼 그리드, 사이드 탭 |
-| Desktop | > 900px | 좌측 사이드바 + 메인 + 지도 |
-
-플레이어 화면에서 데스크탑 이상은 좌우 분할(영상 + 지도) 레이아웃을 기본으로 적용합니다.
-
----
-
-## 12. 접근성 (Accessibility)
-
-- 모든 이미지에 `semanticLabel` 제공
-- 버튼 최소 터치 영역: 48 × 48 dp
-- 텍스트 대비율: WCAG AA 기준 (4.5:1) 이상
-- 다이나믹 폰트 크기 대응 (Flutter `MediaQuery.textScaleFactor`)
-
----
-
-*최종 수정: 2026-04-15*
+*최종 수정: 2026-06 (PinFlick 기준)*

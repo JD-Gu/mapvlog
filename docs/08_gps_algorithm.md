@@ -1,11 +1,14 @@
 # 08. GPS 보간 알고리즘 명세
 
-> ℹ️ **PinFlick 기준 안내** — 서비스명이 *MapVlog → PinFlick* 으로 변경되었고, 친구 위치 공유 중심으로 피벗했습니다. 일부 내용은 초기 기획이라 현재 구현과 다를 수 있습니다. 최신 기준은 루트 `CLAUDE.md` 와 `docs/01,05,09` 를 참고하세요.
+브이로그 **플레이어의 영상↔지도 동기화** 핵심 로직입니다. (PinFlick에서 현재 사용 중)
 
+> 실제 구현: `lib/services/gps_interpolator.dart`(보간·거리·중심·바운드), `gps_tracking_service.dart`(촬영 시 1초 수집), 플레이어는 `lib/screens/vlog/vlog_player_screen.dart`.
+> 아래 예시의 `GpsIndexer` 클래스명은 설명용이며 실제 클래스명(`GpsInterpolator`)과 다를 수 있습니다.
+> `dart:math` 는 `import 'dart:math' as math;`(소문자)로 사용합니다.
 
 ## 개요
 
-MapVlog의 핵심 기술인 **타임코드 ↔ GPS 좌표 변환 알고리즘**을 정의합니다.
+**타임코드 ↔ GPS 좌표 변환 알고리즘**을 정의합니다.
 영상 재생 중 현재 타임코드에 해당하는 GPS 좌표를 실시간으로 계산하여 지도 마커를 동기화합니다.
 
 ---
@@ -343,10 +346,9 @@ bool isStationary(double t) {
 GPS 트랙이 수천 개 포인트일 때 선형 탐색(O(n)) 대신 **이진 탐색(O(log n))** 을 사용합니다.
 (위 `_binarySearch` 메서드 참조)
 
-### 5.2 청크 로딩
+### 5.2 트랙 저장/로드
 
-Firestore에서 GPS 트랙을 500개 단위 청크로 분할 저장하며, 재생 시작 전 전체 로드합니다.
-(05_db_schema.md 참조)
+GPS 트랙은 `vlogs/{id}.gpsTrack` **배열 필드**로 저장하며, 브이로그 문서 로드 시 함께 읽어 클라이언트에서 인덱싱합니다. (별도 청크 서브컬렉션 없음 — 05_db_schema.md 참조)
 
 ### 5.3 마커 업데이트 최적화
 
@@ -379,4 +381,4 @@ void _onVideoPositionChanged() {
 
 ---
 
-*최종 수정: 2026-04-15*
+*최종 수정: 2026-06 (PinFlick 기준)*
