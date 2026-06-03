@@ -498,30 +498,33 @@ class _MainShellState extends State<MainShell> {
     return InkWell(
       key: itemKey,
       onTap: () => _onTabTap(index),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.full),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        // 선택 시 탭 컬러 알약 배경 — 밋밋함 제거 + 현재 탭 직관 표시
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.symmetric(
+            horizontal: isSelected ? 18 : 12,
+            vertical: 7,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+          ),
+          child: AnimatedScale(
+            scale: isSelected ? 1.0 : 0.9,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutBack,
+            child: Icon(
               isSelected ? filled : outlined,
               color: iconColor,
-              size: 26,
+              size: 25,
             ),
-            const SizedBox(height: 4),
-            // 선택 인디케이터 — 가느다란 바 (현재 탭 직관 표시)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              width: isSelected ? 16 : 0,
-              height: 3,
-              decoration: BoxDecoration(
-                color: activeColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -550,7 +553,7 @@ class _MainShellState extends State<MainShell> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.home_outlined, Icons.home),
-                _buildNavItem(1, Icons.groups_outlined, Icons.groups,
+                _buildNavItem(1, Icons.map_outlined, Icons.map,
                     itemKey: _mapTabKey),
                 const SizedBox(width: 56), // FAB 공간
                 _buildNavItem(
