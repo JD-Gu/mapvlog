@@ -68,7 +68,7 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ),
 
-              // Google 로그인
+              // Google 로그인 — 유일한 로그인 수단
               _LoginButton(
                 onPressed: auth.loading
                     ? null
@@ -79,46 +79,69 @@ class LoginScreen extends StatelessWidget {
                 foregroundColor: AppColors.textPrimary,
                 borderColor: AppColors.textDisabled,
               ),
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.md),
 
-              // Apple 로그인 — iOS / macOS 전용
-              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
-                _LoginButton(
-                  onPressed: null, // TODO: sign_in_with_apple 연동 (마일스톤 2+)
-                  icon: Icons.apple,
-                  label: 'Apple로 로그인',
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
+              // 구글 계정 필수 안내
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.18)),
                 ),
-
-              // 카카오 로그인 — TODO: kakao_flutter_sdk 연동
-              const SizedBox(height: AppSpacing.sm),
-              _LoginButton(
-                onPressed: null,
-                icon: Icons.chat_bubble,
-                label: '카카오로 로그인',
-                backgroundColor: const Color(0xFFFEE500),
-                foregroundColor: Colors.black87,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.5,
+                              color: AppColors.textSecondary),
+                          children: [
+                            const TextSpan(text: 'PinFlick은 '),
+                            const TextSpan(
+                                text: '구글(Gmail) 계정',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primary)),
+                            const TextSpan(
+                                text: '으로만 가입·로그인할 수 있어요.\n계정이 없다면 '),
+                            TextSpan(
+                              text: '구글 계정 만들기',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.underline,
+                                  color: AppColors.primary),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () async {
+                                  final uri = Uri.parse(
+                                      'https://accounts.google.com/signup');
+                                  try {
+                                    await launchUrl(uri,
+                                        mode:
+                                            LaunchMode.externalApplication);
+                                  } catch (_) {}
+                                },
+                            ),
+                            const TextSpan(text: ' 후 이용해 주세요.'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-
-              const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: AppSpacing.lg),
 
               if (auth.loading)
                 const CircularProgressIndicator(color: AppColors.primary),
-
-              // 로그인 없이 둘러보기
-              TextButton(
-                onPressed: auth.loading
-                    ? null
-                    : () => Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                              builder: (_) => const MainShell()),
-                        ),
-                child: const Text(
-                  '로그인 없이 둘러보기',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
 
               // ── Android 앱 베타 다운로드 (웹 전용, Play Store 정식 출시 전 임시 배포) ──
               if (kIsWeb) ...[
