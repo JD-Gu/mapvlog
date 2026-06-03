@@ -17,7 +17,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
 
     <application
-        android:label="mapvlog"
+        android:label="PinFlick"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -52,6 +52,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- image_cropper 의 UCropActivity 등록 (사진 자르기 UI) -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/UCropTheme" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

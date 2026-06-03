@@ -1,17 +1,27 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import 'package:geolocator/geolocator.dart';
+
+import '../../models/friendship.dart';
 import '../../models/vlog.dart';
+import '../../screens/auth/login_screen.dart';
+import '../../screens/friends/friend_list_screen.dart';
 import '../../screens/vlog/vlog_player_screen.dart';
+import '../../screens/vlog/vlog_player_swiper_screen.dart';
 import '../../services/firestore_service.dart';
+import '../../services/friend_service.dart';
+import '../../services/location_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/marker_emojis.dart';
 import '../../widgets/map_controls.dart';
 
 class GalleryScreen extends StatefulWidget {
@@ -24,23 +34,43 @@ class GalleryScreen extends StatefulWidget {
 class _GalleryScreenState extends State<GalleryScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl = TabController(length: 2, vsync: this);
+  List<String>? _friendUids;
+  StreamSubscription<List<Friendship>>? _friendsSub;
+  String? _categoryFilter; // null = 전체
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeFriends();
+  }
+
+  void _subscribeFriends() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _friendUids = [];
+      return;
+    }
+    _friendsSub = FriendService.watchMyFriends().listen((list) {
+      if (!mounted) return;
+      setState(() => _friendUids = list.map((f) => f.friendUid).toList());
+    });
+  }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _friendsSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text(
           '갤러리',
           style: TextStyle(
-              color: AppColors.textPrimary,
               fontWeight: FontWeight.bold,
               fontSize: 18),
         ),
@@ -55,27 +85,164 @@ class _GalleryScreenState extends State<GalleryScreen>
           ],
         ),
       ),
-      body: StreamBuilder<List<Vlog>>(
-        stream: FirestoreService.watchVlogs(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child: CircularProgressIndicator(color: AppColors.primary));
-          }
-          final vlogs = snapshot.data ?? [];
+      body: _buildBody(),
+    );
+  }
 
-          return TabBarView(
-            controller: _tabCtrl,
-            // 수평 스와이프를 TabBarView가 가로채지 않도록 설정
-            // → 포토맵의 지도 팬/줌 제스처가 정상 동작함
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _GridView(vlogs: vlogs),
-              _PhotoMapView(
-                  vlogs: vlogs.where((v) => v.lat != 0 || v.lng != 0).toList()),
-            ],
-          );
-        },
+  Widget _buildBody() {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null) return const _GuestPanel();
+    if (_friendUids == null) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    return StreamBuilder<List<Vlog>>(
+      stream: FirestoreService.watchFriendsVlogs(
+        friendUids: _friendUids!,
+        myUid: me.uid,
+        limit: 100,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
+        final allVlogs = snapshot.data ?? [];
+        // 카테고리 필터 적용
+        final vlogs = _categoryFilter == null
+            ? allVlogs
+            : allVlogs.where((v) {
+                if (v.markerEmoji == null) return _categoryFilter == '일반';
+                return MarkerEmojis.fromEmoji(v.markerEmoji).category ==
+                    _categoryFilter;
+              }).toList();
+        return Column(
+          children: [
+            // 카테고리 칩 행
+            SizedBox(
+              height: 42,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: 6),
+                children: [
+                  _GalleryCategoryChip(
+                    label: '전체',
+                    emoji: '🌐',
+                    selected: _categoryFilter == null,
+                    onTap: () => setState(() => _categoryFilter = null),
+                  ),
+                  const SizedBox(width: 6),
+                  ...MarkerEmojis.groups.map((g) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _GalleryCategoryChip(
+                          label: g.name,
+                          emoji: g.hint,
+                          selected: _categoryFilter == g.name,
+                          onTap: () =>
+                              setState(() => _categoryFilter = g.name),
+                        ),
+                      )),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: TabBarView(
+                controller: _tabCtrl,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  _GridView(vlogs: vlogs),
+                  _PhotoMapView(
+                      vlogs: vlogs
+                          .where((v) => v.lat != 0 || v.lng != 0)
+                          .toList()),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비로그인 패널 (갤러리 빈 상태)
+// ─────────────────────────────────────────────────────────────────────────────
+class _GuestPanel extends StatelessWidget {
+  const _GuestPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.08),
+              ),
+              child: const Icon(Icons.lock_outline,
+                  size: 48, color: AppColors.primary),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              '로그인 후 친구 갤러리를 만나보세요',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '친구를 추가하면 그들의 사진/영상이\n여기에 표시됩니다',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  ),
+                  icon: const Icon(Icons.login, size: 18),
+                  label: const Text('로그인'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppRadius.full)),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FriendListScreen()),
+                  ),
+                  icon: const Icon(Icons.people_outline, size: 18),
+                  label: const Text('친구'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -85,30 +252,115 @@ class _GalleryScreenState extends State<GalleryScreen>
 // 그리드 뷰
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _GridView extends StatelessWidget {
+enum _SortMode { byDate, byDistance, byLikes, byViews }
+enum _SortOrder { asc, desc }
+
+class _GridView extends StatefulWidget {
   final List<Vlog> vlogs;
   const _GridView({required this.vlogs});
 
   @override
-  Widget build(BuildContext context) {
-    if (vlogs.isEmpty) return const _EmptyState();
+  State<_GridView> createState() => _GridViewState();
+}
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      itemCount: vlogs.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 3,
-        mainAxisSpacing: 3,
-      ),
-      itemBuilder: (_, i) => _GridTile(vlog: vlogs[i]),
+class _GridViewState extends State<_GridView> {
+  _SortMode _sortMode = _SortMode.byDate;
+  _SortOrder _sortOrder = _SortOrder.desc; // 날짜 기본: 최신순
+  Position? _position;
+
+  List<Vlog> get _sorted {
+    final list = List<Vlog>.from(widget.vlogs);
+    switch (_sortMode) {
+      case _SortMode.byDistance:
+        if (_position != null) {
+          list.sort((a, b) {
+            final da = Geolocator.distanceBetween(
+                _position!.latitude, _position!.longitude, a.lat, a.lng);
+            final db = Geolocator.distanceBetween(
+                _position!.latitude, _position!.longitude, b.lat, b.lng);
+            return _sortOrder == _SortOrder.asc
+                ? da.compareTo(db)
+                : db.compareTo(da);
+          });
+        }
+        break;
+      case _SortMode.byLikes:
+        list.sort((a, b) => _sortOrder == _SortOrder.asc
+            ? a.likeCount.compareTo(b.likeCount)
+            : b.likeCount.compareTo(a.likeCount));
+        break;
+      case _SortMode.byViews:
+        list.sort((a, b) => _sortOrder == _SortOrder.asc
+            ? a.viewCount.compareTo(b.viewCount)
+            : b.viewCount.compareTo(a.viewCount));
+        break;
+      case _SortMode.byDate:
+        list.sort((a, b) => _sortOrder == _SortOrder.asc
+            ? a.createdAt.compareTo(b.createdAt)
+            : b.createdAt.compareTo(a.createdAt));
+        break;
+    }
+    return list;
+  }
+
+  /// 같은 모드 탭 → 오름/내림 토글 / 다른 모드 탭 → 모드 변경 + 기본 방향
+  Future<void> _onSortTap(_SortMode mode) async {
+    if (_sortMode == mode) {
+      setState(() => _sortOrder =
+          _sortOrder == _SortOrder.desc ? _SortOrder.asc : _SortOrder.desc);
+      return;
+    }
+    final defaultOrder =
+        mode == _SortMode.byDate ? _SortOrder.desc : _SortOrder.asc;
+    if (mode == _SortMode.byDistance && _position == null) {
+      final pos = await LocationService.getCurrentPosition(context);
+      if (!mounted) return;
+      setState(() {
+        _position = pos;
+        _sortMode = mode;
+        _sortOrder = defaultOrder;
+      });
+    } else {
+      setState(() {
+        _sortMode = mode;
+        _sortOrder = defaultOrder;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.vlogs.isEmpty) return const _EmptyState();
+
+    return Column(
+      children: [
+        // 정렬 헤더
+        _SortBar(
+            current: _sortMode,
+            order: _sortOrder,
+            onChanged: _onSortTap),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            itemCount: _sorted.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 3,
+              mainAxisSpacing: 3,
+            ),
+            itemBuilder: (_, i) =>
+                _GridTile(vlog: _sorted[i], playlist: _sorted),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _GridTile extends StatelessWidget {
   final Vlog vlog;
-  const _GridTile({required this.vlog});
+  final List<Vlog>? playlist;
+  const _GridTile({required this.vlog, this.playlist});
 
   bool get _isVideo => (vlog.videoUrl ?? '').isNotEmpty;
   String get _thumbUrl => vlog.thumbnailUrl ?? '';
@@ -118,26 +370,106 @@ class _GridTile extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid != vlog.authorId) return;
 
-    final ok = await showDialog<bool>(
+    HapticFeedback.mediumImpact();
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dlgCtx) => AlertDialog(
-        title: const Text('브이로그 삭제'),
-        content: Text(
-          '"${vlog.title}"을(를) 삭제하시겠습니까?\n영상·사진 파일도 함께 삭제됩니다.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, true),
-            child: const Text(
-              '삭제',
-              style: TextStyle(color: Colors.red),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textDisabled.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline,
+                  color: AppColors.error, size: 24),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '"${vlog.title}" 삭제',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '영상·사진 파일도 함께 삭제됩니다.\n복구할 수 없습니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(sheetCtx, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(
+                            color: AppColors.textDisabled
+                                .withValues(alpha: 0.5)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.full)),
+                      ),
+                      child: const Text('취소',
+                          style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        Navigator.pop(sheetCtx, true);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.full)),
+                        elevation: 2,
+                      ),
+                      child: const Text('삭제',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
     if (ok == true && context.mounted) {
@@ -149,52 +481,106 @@ class _GridTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
+        HapticFeedback.selectionClick();
+        VlogPlayerSwiperScreen.open(
           context,
-          MaterialPageRoute(builder: (_) => VlogPlayerScreen(vlog: vlog)),
+          vlogs: playlist ?? [vlog],
+          initial: vlog,
         );
       },
       onLongPress: () => _onLongPress(context),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 썸네일
-          _thumbUrl.isNotEmpty
-              ? Image.network(
-                  _thumbUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stack) => _placeholderBox(),
-                )
-              : _placeholderBox(),
+      child: Hero(
+        tag: 'vlog_media_${vlog.id}',
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 썸네일
+            _thumbUrl.isNotEmpty
+                ? Image.network(
+                    _thumbUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => _placeholderBox(),
+                  )
+                : _placeholderBox(),
 
-          // 영상 뱃지
-          if (_isVideo)
-            const Positioned(
-              top: 4,
-              left: 4,
-              child: Icon(Icons.play_circle_filled,
-                  size: 18, color: Colors.white70),
-            ),
-
-          // GPS 뱃지 (GPS 트랙이 있는 경우만)
-          if (vlog.hasGpsTrack)
-            Positioned(
-              bottom: 4,
-              right: 4,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
+            // 좌상단: 영상 ▶ 또는 멀티 사진 ▣
+            if (_isVideo)
+              Positioned(
+                top: 4,
+                left: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(140),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.play_arrow_rounded,
+                      size: 14, color: Colors.white),
                 ),
-                child: const Icon(Icons.gps_fixed,
-                    size: 10, color: AppColors.secondary),
+              )
+            else if (vlog.photoUrls.length > 1)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(140),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.collections,
+                      size: 13, color: Colors.white),
+                ),
               ),
-            ),
-        ],
+
+            // 우하단: 영상 길이 또는 GPS 배지
+            if (_isVideo &&
+                vlog.durationSeconds != null &&
+                vlog.durationSeconds! > 0)
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(150),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _fmtDuration(vlog.durationSeconds!),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              )
+            else if (vlog.hasGpsTrack)
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(140),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.gps_fixed,
+                      size: 10, color: AppColors.secondary),
+                ),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  static String _fmtDuration(int seconds) {
+    final m = seconds ~/ 60;
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Widget _placeholderBox() {
@@ -232,11 +618,33 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
   GoogleMapController? _mapController;
   MapType _mapType = MapType.normal;
   LatLng _mapCenter = const LatLng(37.5665, 126.9780);
+  LatLng? _currentLatLng;   // 현재 위치 (null이면 vlog 평균)
+  LatLng? _pendingLocation; // 지도 준비 전에 GPS 도착 시 임시 저장
+  double _pixelRatio = 3.0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pixelRatio = MediaQuery.of(context).devicePixelRatio;
+  }
 
   @override
   void initState() {
     super.initState();
     _rebuildMarkers();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initLocation());
+  }
+
+  Future<void> _initLocation() async {
+    final pos = await LocationService.getCurrentPosition(context);
+    if (pos == null || !mounted) return;
+    final latlng = LatLng(pos.latitude, pos.longitude);
+    setState(() => _currentLatLng = latlng);
+    if (_mapController != null) {
+      _mapController!.animateCamera(CameraUpdate.newLatLng(latlng));
+    } else {
+      _pendingLocation = latlng;
+    }
   }
 
   @override
@@ -288,9 +696,10 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
       icon = _iconCache[vlog.id] ??= await _thumbnailMarkerBitmap(
         vlog.thumbnailUrl ?? '',
         vlog.hasVideo,
+        _pixelRatio,
       );
     } else {
-      icon = await _clusterBitmap(group.count);
+      icon = await _clusterBitmap(group.count, _pixelRatio);
     }
 
     return Marker(
@@ -345,28 +754,28 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
   }
 
   /// 클러스터 원형 마커 (숫자 표시)
-  static Future<BitmapDescriptor> _clusterBitmap(int count) async {
-    const int size = 72;
-    const double c = size / 2.0;
+  static Future<BitmapDescriptor> _clusterBitmap(int count, double r) async {
+    final int size = (72 * r).ceil();
+    final double c = size / 2.0;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
     canvas.drawCircle(
-      Offset(c, c + 3), 28,
+      Offset(c, c + 3 * r), 28 * r,
       Paint()
         ..color = Colors.black.withAlpha(55)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 7 * r),
     );
-    canvas.drawCircle(Offset(c, c), 34, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(c, c), 26, Paint()..color = AppColors.primary);
+    canvas.drawCircle(Offset(c, c), 34 * r, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(c, c), 26 * r, Paint()..color = AppColors.primary);
 
     final label = count > 99 ? '99+' : '$count';
     final tp = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: label,
         style: TextStyle(
-          fontSize: label.length > 2 ? 13.0 : 18.0,
+          fontSize: (label.length > 2 ? 13.0 : 18.0) * r,
           color: Colors.white,
           fontWeight: FontWeight.bold,
         ),
@@ -376,20 +785,23 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
 
     final img = await recorder.endRecording().toImage(size, size);
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(
+      data!.buffer.asUint8List(),
+      imagePixelRatio: r,
+    );
   }
 
   /// 단일 vlog 썸네일 말풍선 마커
   /// - 네트워크 이미지를 Canvas에 그려 BitmapDescriptor 반환
   /// - 실패 시 아이콘 placeholder 사용
   static Future<BitmapDescriptor> _thumbnailMarkerBitmap(
-      String url, bool isVideo) async {
-    const int imgSize = 64;   // 이미지 영역 크기
-    const int border  = 3;    // 흰 테두리 두께
-    const int tailH   = 14;   // 꼬리 길이
-    const int totalH  = imgSize + tailH;
-    const double radius = 10.0;
-    const double cx = imgSize / 2.0;
+      String url, bool isVideo, double r) async {
+    final int imgSize = (64 * r).ceil();   // 이미지 영역 크기
+    final double border  = 3 * r;
+    final int tailH   = (14 * r).ceil();
+    final int totalH  = imgSize + tailH;
+    final double radius = 10.0 * r;
+    final double cx = imgSize / 2.0;
 
     // ── 네트워크 이미지 로드 ──────────────────────────────────────────────
     ui.Image? netImage;
@@ -420,31 +832,31 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
     // 그림자
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(3, 5, imgSize - 3.0, imgSize - 3.0),
-        const Radius.circular(radius),
+        Rect.fromLTWH(3 * r, 5 * r, imgSize - 3.0 * r, imgSize - 3.0 * r),
+        Radius.circular(radius),
       ),
       Paint()
         ..color = Colors.black.withAlpha(65)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 * r),
     );
 
     // 흰 테두리
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(0, 0, imgSize.toDouble(), imgSize.toDouble()),
-        const Radius.circular(radius),
+        Radius.circular(radius),
       ),
       Paint()..color = Colors.white,
     );
 
     // 내부 이미지 영역
     final innerRect = Rect.fromLTWH(
-      border.toDouble(), border.toDouble(),
-      (imgSize - border * 2).toDouble(), (imgSize - border * 2).toDouble(),
+      border, border,
+      imgSize - border * 2, imgSize - border * 2,
     );
     canvas.save();
     canvas.clipRRect(RRect.fromRectAndRadius(
-      innerRect, Radius.circular(radius - border + 1),
+      innerRect, Radius.circular(radius - border + r),
     ));
 
     if (netImage != null) {
@@ -467,7 +879,7 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
       final tp = TextPainter(textDirection: TextDirection.ltr)
         ..text = TextSpan(
           text: isVideo ? '▶' : '📷',
-          style: const TextStyle(fontSize: 22),
+          style: TextStyle(fontSize: 22 * r),
         )
         ..layout();
       tp.paint(canvas, Offset(
@@ -480,25 +892,25 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
     // 영상 배지 (우하단 반투명 원 + ▶)
     if (isVideo) {
       canvas.drawCircle(
-        Offset(imgSize - 13.0, imgSize - 13.0), 10,
+        Offset(imgSize - 13.0 * r, imgSize - 13.0 * r), 10 * r,
         Paint()..color = Colors.black.withAlpha(170),
       );
       canvas.drawPath(
         Path()
-          ..moveTo(imgSize - 17.5, imgSize - 17.0)
-          ..lineTo(imgSize - 7.5,  imgSize - 13.0)
-          ..lineTo(imgSize - 17.5, imgSize - 9.0)
+          ..moveTo(imgSize - 17.5 * r, imgSize - 17.0 * r)
+          ..lineTo(imgSize - 7.5 * r,  imgSize - 13.0 * r)
+          ..lineTo(imgSize - 17.5 * r, imgSize - 9.0 * r)
           ..close(),
         Paint()..color = Colors.white,
       );
     }
 
     // 꼬리 삼각형 (하단 중앙)
-    const double tailW = 14.0;
+    final double tailW = 14.0 * r;
     canvas.drawPath(
       Path()
-        ..moveTo(cx - tailW / 2, imgSize - 1.0)
-        ..lineTo(cx + tailW / 2, imgSize - 1.0)
+        ..moveTo(cx - tailW / 2, imgSize - 1.0 * r)
+        ..lineTo(cx + tailW / 2, imgSize - 1.0 * r)
         ..lineTo(cx, totalH.toDouble())
         ..close(),
       Paint()..color = Colors.white,
@@ -506,10 +918,15 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
 
     final img = await recorder.endRecording().toImage(imgSize, totalH);
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(
+      data!.buffer.asUint8List(),
+      imagePixelRatio: r,
+    );
   }
 
   LatLng get _center {
+    // 현재 위치 우선, 없으면 vlog 평균, 없으면 서울시청
+    if (_currentLatLng != null) return _currentLatLng!;
     if (widget.vlogs.isEmpty) return const LatLng(37.5665, 126.9780);
     final lat = widget.vlogs.map((e) => e.lat).reduce((a, b) => a + b) /
         widget.vlogs.length;
@@ -532,11 +949,17 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
           markers: _markers,
           mapType: _mapType,
           zoomControlsEnabled: false,
+          myLocationEnabled: true,
           myLocationButtonEnabled: false,
           onMapCreated: (ctrl) {
             _mapController = ctrl;
             _mapCenter = _center;
             _rebuildMarkers();
+            if (_pendingLocation != null) {
+              ctrl.animateCamera(
+                  CameraUpdate.newLatLng(_pendingLocation!));
+              _pendingLocation = null;
+            }
           },
           onCameraMove: (pos) {
             _zoom = pos.zoom;
@@ -604,24 +1027,43 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
 class _EmptyState extends StatelessWidget {
   final String message;
   const _EmptyState(
-      {this.message = '업로드한 브이로그가 없습니다.\n촬영 탭에서 사진·영상을 올려보세요!'});
+      {this.message = '아직 업로드한 브이로그가 없어요\n촬영 탭에서 사진·영상을 올려보세요'});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.photo_library_outlined,
-              size: 64, color: AppColors.textDisabled),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 14),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF7C4DFF).withValues(alpha: 0.10),
+                    const Color(0xFF7C4DFF).withValues(alpha: 0.04),
+                  ],
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.photo_library_outlined,
+                  size: 48, color: Color(0xFF7C4DFF)),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -677,7 +1119,7 @@ class _MapPopupState extends State<_MapPopup> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: AppShadow.elevated,
       ),
@@ -707,7 +1149,6 @@ class _MapPopupState extends State<_MapPopup> {
                   widget.vlog.title,
                   style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
                       fontSize: 14),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -786,7 +1227,7 @@ class _MapPopupState extends State<_MapPopup> {
   }
 
   Widget _iconBox() => Container(
-        color: AppColors.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         child: Center(
           child: Icon(
             _isVideo ? Icons.videocam : Icons.photo,
@@ -815,7 +1256,7 @@ class _MapLegend extends StatelessWidget {
         const SizedBox(width: 5),
         Text(label,
             style: const TextStyle(
-                fontSize: 10, color: AppColors.textPrimary)),
+                fontSize: 10)),
       ],
     );
   }
@@ -860,8 +1301,8 @@ class _GalleryClusterSheet extends StatelessWidget {
       minChildSize: 0.3,
       maxChildSize: 0.85,
       builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -887,7 +1328,6 @@ class _GalleryClusterSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
@@ -927,9 +1367,9 @@ class _GalleryVlogCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.surfaceVariant),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(13),
@@ -963,7 +1403,6 @@ class _GalleryVlogCard extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: AppColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1036,4 +1475,192 @@ class _GalleryVlogCard extends StatelessWidget {
           ),
         ),
       );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공통 정렬 바
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공통 정렬 바 (날짜순 / 거리순 + 오름/내림 표시)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SortBar extends StatelessWidget {
+  final _SortMode current;
+  final _SortOrder order;
+  final void Function(_SortMode) onChanged;
+  const _SortBar({
+    required this.current,
+    required this.order,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _SortChipG(
+              label: '날짜순',
+              icon: Icons.calendar_today_outlined,
+              selected: current == _SortMode.byDate,
+              ascending: order == _SortOrder.asc,
+              onTap: () => onChanged(_SortMode.byDate),
+            ),
+            const SizedBox(width: 6),
+            _SortChipG(
+              label: '거리순',
+              icon: Icons.near_me_outlined,
+              selected: current == _SortMode.byDistance,
+              ascending: order == _SortOrder.asc,
+              onTap: () => onChanged(_SortMode.byDistance),
+            ),
+            const SizedBox(width: 6),
+            _SortChipG(
+              label: '좋아요순',
+              icon: Icons.favorite,
+              selected: current == _SortMode.byLikes,
+              ascending: order == _SortOrder.asc,
+              onTap: () => onChanged(_SortMode.byLikes),
+            ),
+            const SizedBox(width: 6),
+            _SortChipG(
+              label: '조회순',
+              icon: Icons.visibility_outlined,
+              selected: current == _SortMode.byViews,
+              ascending: order == _SortOrder.asc,
+              onTap: () => onChanged(_SortMode.byViews),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 갤러리 전용 정렬 칩 (_SortChip 과 동일 디자인, 파일 분리로 인해 별도 정의)
+class _SortChipG extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool ascending;
+  final VoidCallback onTap;
+  const _SortChipG({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.ascending,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 13,
+                color: selected ? Colors.white : AppColors.textSecondary),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 3),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, anim) =>
+                    ScaleTransition(scale: anim, child: child),
+                child: Icon(
+                  ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                  key: ValueKey(ascending),
+                  size: 11,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 갤러리 카테고리 필터 칩 ─────────────────────────────────────────────
+class _GalleryCategoryChip extends StatelessWidget {
+  final String label;
+  final String emoji;
+  final bool selected;
+  final VoidCallback onTap;
+  const _GalleryCategoryChip({
+    required this.label,
+    required this.emoji,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(
+            color: selected
+                ? AppColors.primary
+                : AppColors.textDisabled.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 13)),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

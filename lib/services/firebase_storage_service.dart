@@ -87,4 +87,7 @@ class FirebaseStorageService {
 
   static String thumbnailPath(String userId, String filename) =>
       'thumbnails/$userId/$filename';
+
+  static String avatarPath(String userId) =>
+      'avatars/$userId.jpg';
 }

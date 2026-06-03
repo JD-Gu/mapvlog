@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
     appId: '1:82352854112:web:82c75c80da1d5343b85f05',
     messagingSenderId: '82352854112',
     projectId: 'mapvlog-1f06d',
-    authDomain: 'mapvlog-1f06d.firebaseapp.com',
+    authDomain: 'pinflick.web.app',
     storageBucket: 'mapvlog-1f06d.firebasestorage.app',
     measurementId: 'G-FZVNKDGDQP',
   );
@@ -83,7 +83,7 @@ class DefaultFirebaseOptions {
     appId: '1:82352854112:web:4c40cd634ac43df2b85f05',
     messagingSenderId: '82352854112',
     projectId: 'mapvlog-1f06d',
-    authDomain: 'mapvlog-1f06d.firebaseapp.com',
+    authDomain: 'pinflick.web.app',
     storageBucket: 'mapvlog-1f06d.firebasestorage.app',
     measurementId: 'G-NSR2J02GJC',
   );

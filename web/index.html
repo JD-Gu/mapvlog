@@ -1,49 +1,301 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
+
+  <!-- ── 레거시 Service Worker 자동 정리 ──────────────────────────────
+       이전 버전에서 설치된 Flutter SW 가 신규 빌드를 캐시로 가로채는 문제를
+       방지하기 위해, 페이지 로드 시 모든 SW 를 해제하고 캐시를 비운다.
+       (이 빌드부터 --pwa-strategy=none 으로 SW 자체를 더 이상 만들지 않음) -->
+  <script>
+    (function () {
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) { r.unregister(); });
+          }).catch(function () {});
+        }
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          }).catch(function () {});
+        }
+      } catch (e) {}
+    })();
+  </script>
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="친구의 위치로 핀(Pin), 친구의 일상을 플릭(Flick) — 베프·일반·불편 등급으로 정밀도를 조절하는 친구 위치 공유 플랫폼">
+  <meta name="theme-color" content="#1A73E8">
+  <meta name="keywords" content="PinFlick, 핀플릭, 친구위치, 위치공유, Zenly, GPS, 브이로그, 친구찾기, 지도SNS">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="mapvlog">
+  <meta name="apple-mobile-web-app-title" content="PinFlick">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>MapVlog</title>
+  <title>PinFlick — 친구의 위치로 핀, 일상을 플릭</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Google Maps JavaScript API — 키를 실제 값으로 교체하세요 -->
+  <!-- ── Open Graph (카톡 / 슬랙 / 페이스북 미리보기) ────────────────────── -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PinFlick">
+  <meta property="og:locale" content="ko_KR">
+  <meta property="og:url" content="https://pinflick.web.app/">
+  <meta property="og:title" content="PinFlick — 친구의 위치로 핀, 일상을 플릭">
+  <meta property="og:description" content="지도를 넘겨(Flick) 친구를 만나다. 베프·일반·불편 등급으로 위치 정밀도를 조절하는 친구 위치 공유 플랫폼">
+  <meta property="og:image" content="https://pinflick.web.app/icons/Icon-512.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="PinFlick 로고">
+
+  <!-- ── Twitter Card ────────────────────────────────────────────────────── -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PinFlick — 친구의 위치로 핀, 일상을 플릭">
+  <meta name="twitter:description" content="지도를 넘겨(Flick) 친구를 만나다. 친구 위치 공유 플랫폼">
+  <meta name="twitter:image" content="https://pinflick.web.app/icons/Icon-512.png">
+
+  <!-- Google Maps JavaScript API -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAySvE28GQvpShlGt6FeDY8V1_QEdvjtYA"></script>
+
+  <!-- Flutter가 시작되기 전에 URL 해시를 저장 (딥링크 처리용) -->
+  <script>
+    window.__pf_initial_hash = window.location.hash || '';
+
+    // ── PWA 설치 프롬프트 캡처 ─────────────────────────────────────────────
+    // Chrome/Edge 등이 발화하는 beforeinstallprompt를 받아 두고
+    // 사용자가 설치 버튼을 탭할 때 .prompt() 호출
+    window.__pf_installPrompt = null;
+    window.__pf_isInstalled =
+      window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__pf_installPrompt = e;
+      console.log('[PinFlick] 설치 프롬프트 준비됨');
+    });
+    window.addEventListener('appinstalled', function () {
+      window.__pf_installPrompt = null;
+      window.__pf_isInstalled = true;
+      console.log('[PinFlick] 앱 설치 완료');
+    });
+
+    // Flutter에서 호출하는 헬퍼들
+    window.pfCanInstall = function () {
+      return window.__pf_installPrompt !== null && !window.__pf_isInstalled;
+    };
+    window.pfIsInstalled = function () {
+      return !!window.__pf_isInstalled;
+    };
+    window.__pf_lastOutcome = '';
+    window.pfShowInstallPrompt = function () {
+      var p = window.__pf_installPrompt;
+      if (!p) return false;
+      window.__pf_lastOutcome = ''; // 초기화
+      p.prompt();
+      p.userChoice.then(function (choice) {
+        window.__pf_lastOutcome = choice.outcome; // 'accepted' | 'dismissed'
+        window.__pf_installPrompt = null;
+      });
+      return true;
+    };
+    window.pfLastOutcome = function () {
+      return window.__pf_lastOutcome || '';
+    };
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* ── Pre-loader overlay ─────────────────────────────────── */
+    #pf-intro {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background:
+        linear-gradient(
+          to bottom,
+          rgba(0,0,0,0.60)  0%,
+          rgba(0,0,0,0.20) 35%,
+          rgba(0,0,0,0.72) 65%,
+          rgba(0,0,0,0.93) 100%
+        ),
+        url('assets/assets/images/intro_hero.png') center / cover no-repeat;
+      background-color: #0d2b5e; /* 이미지 없을 때 폴백 */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 48px 32px 52px;
+      transition: opacity 0.9s ease;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+    }
+    #pf-intro.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* 로고 영역 */
+    .pf-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      align-self: flex-start;
+    }
+    .pf-icon-img {
+      width: 40px; height: 40px;
+      object-fit: contain;
+      filter: drop-shadow(0 3px 10px rgba(26,115,232,0.5));
+    }
+    .pf-logo-name {
+      color: #fff;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+
+    /* 중간 배지 */
+    .pf-badge {
+      background: rgba(26,115,232,0.22);
+      border: 1px solid rgba(26,115,232,0.5);
+      border-radius: 999px;
+      padding: 6px 18px;
+      color: #90CAF9;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      backdrop-filter: blur(6px);
+    }
+
+    /* 하단 CTA 영역 */
+    .pf-bottom {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .pf-headline {
+      color: #fff;
+      font-size: clamp(26px, 5vw, 36px);
+      font-weight: 800;
+      line-height: 1.25;
+      letter-spacing: -0.6px;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    }
+    .pf-sub {
+      color: rgba(255,255,255,0.72);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    /* 로딩 스피너 + 텍스트 */
+    .pf-loading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .pf-spinner {
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.25);
+      border-top-color: #1A73E8;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .pf-loading-text {
+      color: rgba(255,255,255,0.55);
+      font-size: 13px;
+    }
+
+    /* 하단 태그라인 */
+    .pf-tagline {
+      color: rgba(255,255,255,0.40);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <!-- ── Pre-loader (Flutter 로드 전 표시) ──────────────────────────────── -->
+  <div id="pf-intro">
+    <!-- 상단 로고 -->
+    <div class="pf-logo-wrap">
+      <img class="pf-icon-img"
+           src="assets/assets/images/Pinflick_icon.png"
+           alt="PinFlick">
+      <span class="pf-logo-name">PinFlick</span>
+    </div>
+
+    <!-- 중간 배지 -->
+    <div class="pf-badge">📍 친구 위치 공유 플랫폼</div>
+
+    <!-- 하단 CTA -->
+    <div class="pf-bottom">
+      <div class="pf-headline">친구의 위치로 핀(Pin)<br>친구의 일상을 플릭(Flick)</div>
+      <div class="pf-sub">
+        베프·일반·불편 — 등급별로 위치 정밀도를 조절<br>
+        지도를 넘겨(Flick) 친구를 만나다, PinFlick
+      </div>
+      <div class="pf-loading">
+        <div class="pf-spinner"></div>
+        <span class="pf-loading-text">앱을 불러오는 중...</span>
+      </div>
+      <div class="pf-tagline">PinFlick — 핀플릭</div>
+    </div>
+  </div>
+
+  <!-- ── Flutter bootstrap ──────────────────────────────────────────────── -->
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // Flutter가 준비되면 pre-loader를 페이드아웃
+    (function () {
+      const intro = document.getElementById('pf-intro');
+      if (!intro) return;
+
+      // flt-glass-pane 또는 canvas가 나타나면 숨기기
+      const observer = new MutationObserver(function () {
+        const ready =
+          document.querySelector('flt-glass-pane') ||
+          document.querySelector('flutter-view') ||
+          document.querySelector('flt-scene-host');
+        if (ready) {
+          observer.disconnect();
+          // 약간의 딜레이 후 페이드아웃 (Flutter 첫 프레임 렌더 대기)
+          setTimeout(function () {
+            intro.classList.add('hidden');
+            setTimeout(function () {
+              intro.remove();
+            }, 950);
+          }, 400);
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // 최대 8초 후 강제 제거 (폴백)
+      setTimeout(function () {
+        intro.classList.add('hidden');
+        setTimeout(function () { intro.remove(); }, 950);
+      }, 8000);
+    })();
+  </script>
 </body>
 </html>

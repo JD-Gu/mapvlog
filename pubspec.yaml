@@ -1,8 +1,8 @@
-name: mapvlog
+﻿name: mapvlog
 description: "GPS 타임스탬프 기반 브이로그 플랫폼"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.48.0+69
 
 environment:
   sdk: ^3.11.4
@@ -32,6 +32,12 @@ dependencies:
   # 동영상 압축 (업로드 크기 80% 감소)
   video_compress: ^3.1.2
 
+  # 폰 갤러리 저장 (마법사 촬영 결과 → 사용자 사진첩 자동 저장)
+  gal: ^2.3.0
+
+  # HTTP (역지오코딩 Nominatim — 웹/모바일 공용 도로명 주소)
+  http: ^1.2.0
+
   # Firebase
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1
@@ -58,6 +64,28 @@ dependencies:
   # 환경변수
   flutter_dotenv: ^5.2.1
 
+  # 임시 디렉토리 (다운로드 저장용)
+  path_provider: ^2.1.0
+
+  # 웹 파일 드래그&드롭
+  flutter_dropzone: ^4.0.1
+
+  # 가속도계 (카메라 화면 아이콘 회전용 + 라이브맵 이동 감지)
+  sensors_plus: ^4.0.2
+
+  # 배터리 잔량 (라이브맵 절전 모드)
+  battery_plus: ^6.0.3
+
+  # QR 코드 생성 + 스캔 (친구 추가)
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+
+  # 피드 동영상 자동 미리보기 (Inview 감지)
+  visibility_detector: ^0.4.0+2
+
+  # 이미지 자르기 (프로필 사진 등)
+  image_cropper: ^8.0.2
+
 
 dev_dependencies:
   flutter_test:
@@ -76,3 +104,4 @@ flutter:
 
   assets:
     - .env
+    - assets/images/

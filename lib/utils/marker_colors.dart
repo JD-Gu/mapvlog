@@ -16,6 +16,14 @@ class MarkerColors {
     Color(0xFFFFD600), // 노랑
     Color(0xFFE91E63), // 분홍
     Color(0xFF212121), // 검정
+    Color(0xFF00BCD4), // 시안
+    Color(0xFF26A69A), // 민트(틸)
+    Color(0xFF7C4DFF), // 라벤더(딥퍼플)
+    Color(0xFF3F51B5), // 인디고
+    Color(0xFFFF5252), // 코랄
+    Color(0xFFC0CA33), // 라임
+    Color(0xFF795548), // 갈색
+    Color(0xFF607D8B), // 블루그레이
   ];
 
   /// int? → Color (null 이면 기본 파랑)

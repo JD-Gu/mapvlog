@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class AppColors {
   static const Color primary = Color(0xFF1A73E8);
@@ -52,3 +52,13 @@ const double kVlogMarkerSize = 48.0;
 const double kPhotoMarkerSize = 36.0;
 const Color kPolylineColor = Color(0xFF1A73E8);
 const int kPolylineWidth = 4;
+
+// 앱 버전 — pubspec.yaml 의 version 필드와 동기화 유지 (수동)
+const String kAppVersion = '1.48.0';
+const String kAppBuildNumber = '69';
+const String kAppChannel = 'beta'; // 'beta' | 'stable'
+
+/// APK 다운로드 URL — 빌드번호 쿼리로 브라우저/다운로드매니저 캐시 우회
+/// remoteBuild 가 있으면 그 값을, 없으면 내장 빌드번호를 붙임
+String apkDownloadUrl([String? remoteBuild]) =>
+    'https://pinflick.web.app/downloads/pinflick.apk?v=${remoteBuild ?? kAppBuildNumber}';

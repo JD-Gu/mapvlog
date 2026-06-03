@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "mapvlog-1f06d"
+  },
+  "targets": {
+    "mapvlog-1f06d": {
+      "hosting": {
+        "pinflick": [
+          "pinflick"
+        ]
+      }
+    }
+  }
+}

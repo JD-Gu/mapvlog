@@ -10,8 +10,11 @@ service cloud.firestore {
 
     // ── vlogs 컬렉션 ────────────────────────────────────────────────────────
     match /vlogs/{vlogId} {
-      // 익명 포함 누구나 읽기 가능
-      allow read: if true;
+      // 읽기는 로그인된 사용자에게 허용 (visibility 는 클라이언트에서 enforce).
+      // Firestore 룰로 visibility 를 막으면 whereIn 쿼리가 private 후보를 포함할 때
+      // 전체 쿼리가 permission_denied 로 실패 → 피드가 비어버림.
+      // 실제 visibility 필터링은 FirestoreService.watchFriendsVlogs 에서 처리.
+      allow read: if request.auth != null;
 
       // 로그인 사용자만 새 브이로그 생성
       allow create: if request.auth != null;
@@ -21,15 +24,66 @@ service cloud.firestore {
                             || (request.auth != null
                                 && request.auth.uid == resource.data.authorId);
 
-      // ── likes 서브컬렉션 ───────────────────────────────────────────────
+      // ── likes 서브컬렉션 (vlog 좋아요) ─────────────────────────────────
       match /likes/{userId} {
-        // 익명 포함 누구나 읽기 (좋아요 여부 확인용)
         allow read: if true;
-
-        // 본인 좋아요 문서만 생성·삭제
         allow create, delete: if request.auth != null
                               && request.auth.uid == userId;
       }
+
+      // ── saves 서브컬렉션 (즐겨찾기 — 본인만 read/write) ─────────────────
+      match /saves/{userId} {
+        allow read: if request.auth != null
+                    && request.auth.uid == userId;
+        allow create, delete: if request.auth != null
+                              && request.auth.uid == userId;
+      }
+
+      // ── reactions 서브컬렉션 (Slack 스타일 이모지 리액션) ──────────────
+      // docId = {userId}_{emoji} 형태 — 한 사용자가 여러 이모지로 리액션 가능
+      match /reactions/{reactionId} {
+        allow read: if true;
+        allow create, delete: if request.auth != null
+                              && request.auth.uid == request.resource.data.userId
+                              || (request.auth != null
+                                  && resource != null
+                                  && request.auth.uid == resource.data.userId);
+      }
+
+      // ── comments 서브컬렉션 ───────────────────────────────────────────
+      match /comments/{commentId} {
+        allow read: if true;
+
+        // 작성자 본인만 생성
+        allow create: if request.auth != null
+                      && request.auth.uid == request.resource.data.authorId;
+
+        // 작성자 본인 또는 vlog 등록자 또는 마스터 삭제
+        allow delete: if isMaster()
+                      || (request.auth != null
+                          && (request.auth.uid == resource.data.authorId
+                              || request.auth.uid == get(/databases/$(database)/documents/vlogs/$(vlogId)).data.authorId));
+
+        // likeCount 필드만 변경하는 update 허용 (좋아요 토글)
+        allow update: if request.auth != null
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['likeCount']);
+
+        // 댓글 좋아요 서브컬렉션
+        match /likes/{userId} {
+          allow read: if true;
+          allow create, delete: if request.auth != null
+                                && request.auth.uid == userId;
+        }
+      }
+    }
+
+    // ── config 컬렉션 (앱 설정 — 신규 버전 정보 등) ──────────────────────────
+    match /config/{configId} {
+      // 모든 사용자(익명 포함) 읽기 — 앱 시작 시 버전 체크
+      allow read: if true;
+      // 마스터만 쓰기 가능
+      allow write: if isMaster();
     }
 
     // ── users 컬렉션 ────────────────────────────────────────────────────────
@@ -44,6 +98,46 @@ service cloud.firestore {
 
       // 마스터만 삭제 가능 (일반 사용자 삭제 불가)
       allow delete: if isMaster();
+
+      // ── friends 서브컬렉션 (양쪽 관계 doc 페어) ──────────────────────────
+      // users/{me}/friends/{friend}  ← 내가 본 친구 관계
+      match /friends/{friendUid} {
+        // 누구나 읽기 (친구 목록·검색·관계 확인용)
+        allow read: if true;
+
+        // 본인 doc 컨테이너인 경우 본인이 작성 (sendRequest의 내쪽 doc)
+        // 다른 사람이 본인 doc에 incoming 요청을 쓰는 케이스도 허용
+        allow create, update: if request.auth != null
+                              && (request.auth.uid == userId
+                                  || request.auth.uid == friendUid);
+
+        // 본인 또는 상대 둘 다 삭제 가능 (친구 해제)
+        allow delete: if request.auth != null
+                      && (request.auth.uid == userId
+                          || request.auth.uid == friendUid);
+      }
+
+      // ── friendGroups 서브컬렉션 (커스텀 그룹 — 본인만 read/write) ──────
+      match /friendGroups/{groupId} {
+        allow read, create, update, delete: if request.auth != null
+                                            && request.auth.uid == userId;
+      }
+
+      // ── pings 서브컬렉션 (호출 알림) ─────────────────────────────────────
+      // users/{me}/pings/{pingId}  ← 내게 온 ping
+      match /pings/{pingId} {
+        // 본인 ping만 읽기 (수신함 사생활)
+        allow read: if request.auth != null
+                    && request.auth.uid == userId;
+
+        // 누구나 다른 사람에게 ping 보낼 수 있음 (fromUid 본인 검증)
+        allow create: if request.auth != null
+                      && request.auth.uid == request.resource.data.fromUid;
+
+        // 본인만 삭제 (확인 후 dismiss)
+        allow delete: if request.auth != null
+                      && request.auth.uid == userId;
+      }
     }
   }
 }

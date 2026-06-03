@@ -114,6 +114,57 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// 프로필 사진 URL 변경
+  /// Firebase Auth + Firestore users + 본인 vlogs.authorPhotoUrl 일괄 동기화
+  Future<bool> updatePhotoURL(String? newUrl) async {
+    if (_user == null) return false;
+    _loading = true;
+    notifyListeners();
+    try {
+      // 1. Firebase Auth
+      await _user!.updatePhotoURL(newUrl);
+      await _user!.reload();
+      _user = _auth.currentUser;
+
+      // 2. users 컬렉션
+      await _firestore.collection('users').doc(_user!.uid).set(
+        {
+          'photoURL': newUrl ?? '',
+          'photoUrl': newUrl ?? '',  // LiveMap 호환
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      // 3. 본인 vlogs의 authorPhotoUrl 일괄 갱신 (피드 카드 동기화)
+      final snap = await _firestore
+          .collection('vlogs')
+          .where('authorId', isEqualTo: _user!.uid)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        final batch = _firestore.batch();
+        for (final doc in snap.docs) {
+          if (newUrl == null || newUrl.isEmpty) {
+            batch.update(doc.reference,
+                {'authorPhotoUrl': FieldValue.delete()});
+          } else {
+            batch.update(doc.reference, {'authorPhotoUrl': newUrl});
+          }
+        }
+        await batch.commit();
+      }
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('프로필 사진 변경 실패: $e');
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> signOut() async {
     try {
       if (!kIsWeb) {

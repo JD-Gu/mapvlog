@@ -57,3 +57,6 @@ GoogleService-Info.plist
 
 # Claude Code 세션 데이터
 .claude/
+
+# 베타 배포용 APK (Firebase Hosting에 직접 업로드 — 빌드마다 갱신)
+/web/downloads/*.apk

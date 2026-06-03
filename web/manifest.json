@@ -1,11 +1,11 @@
 {
-    "name": "mapvlog",
-    "short_name": "mapvlog",
+    "name": "PinFlick",
+    "short_name": "PinFlick",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1A73E8",
+    "theme_color": "#1A73E8",
+    "description": "친구의 위치로 핀(Pin), 친구의 일상을 플릭(Flick) — 등급별 정밀도 친구 위치 공유 플랫폼",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

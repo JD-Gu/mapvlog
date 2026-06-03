@@ -1,16 +1,33 @@
+﻿import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'models/user_status.dart';
+import 'models/vlog.dart';
 import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/camera/camera_screen.dart';
+import 'screens/camera/vlog_upload_wizard.dart';
 import 'screens/gallery/gallery_screen.dart';
 import 'screens/home/home_screen.dart';
-import 'screens/map/map_screen.dart';
-import 'screens/profile/profile_screen.dart';
+import 'screens/live_map/live_map_screen.dart';
+import 'screens/friends/friend_list_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/vlog/vlog_player_screen.dart';
+import 'services/user_status_service.dart';
+import 'services/web_version_check_service.dart';
 import 'utils/constants.dart';
+import 'services/app_update_service.dart';
+import 'utils/sheets.dart';
+import 'widgets/new_version_banner.dart';
+import 'widgets/check_in_sheet.dart';
+import 'widgets/notifications_sheet.dart';
+import 'widgets/pulsing_fab.dart';
+import 'widgets/update_prompt_sheet.dart';
 
 class MapVlogApp extends StatelessWidget {
   const MapVlogApp({super.key});
@@ -20,29 +37,81 @@ class MapVlogApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'MapVlog',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: AppColors.primary,
-            primary: AppColors.primary,
-            secondary: AppColors.secondary,
-            error: AppColors.error,
-            surface: AppColors.surface,
-          ),
-          scaffoldBackgroundColor: AppColors.background,
-          useMaterial3: true,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProv, _) => MaterialApp(
+          title: 'PinFlick',
+          debugShowCheckedModeBanner: false,
+          themeMode: themeProv.mode,
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
+          home: const SplashScreen(),
         ),
-        home: const SplashScreen(),
       ),
     );
   }
+
+  static final ThemeData _lightTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      primary: AppColors.primary,
+      secondary: AppColors.secondary,
+      error: AppColors.error,
+      surface: AppColors.surface,
+      brightness: Brightness.light,
+    ),
+    scaffoldBackgroundColor: AppColors.background,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.surface,
+      foregroundColor: AppColors.textPrimary,
+      elevation: 0,
+      scrolledUnderElevation: 1,
+    ),
+    cardTheme: const CardThemeData(
+      color: AppColors.surface,
+      elevation: 0,
+    ),
+    dividerColor: const Color(0xFFE5E7EB),
+    useMaterial3: true,
+  );
+
+  // 다크 모드 — 자연스러운 회색 계열 (순흑 X)
+  static const _darkBg = Color(0xFF121316);          // scaffold bg
+  static const _darkSurface = Color(0xFF1C1D21);     // card / appbar
+  static const _darkSurfaceVariant = Color(0xFF26282E);
+
+  static final ThemeData _darkTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      primary: AppColors.primary,
+      secondary: AppColors.secondary,
+      error: AppColors.error,
+      surface: _darkSurface,
+      surfaceContainerHighest: _darkSurfaceVariant,
+      brightness: Brightness.dark,
+    ),
+    scaffoldBackgroundColor: _darkBg,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _darkSurface,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      scrolledUnderElevation: 1,
+    ),
+    cardTheme: const CardThemeData(
+      color: _darkSurface,
+      elevation: 0,
+    ),
+    dividerColor: const Color(0xFF2E3035),
+    useMaterial3: true,
+  );
 }
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({super.key, this.initialVlog});
+
+  /// 딥링크 진입 시 바로 열 브이로그 (null이면 일반 홈 진입)
+  final Vlog? initialVlog;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -52,13 +121,167 @@ class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   AuthProvider? _authProvider;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    MapScreen(),
-    CameraScreen(),
-    GalleryScreen(),
-    ProfileScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  // ── 글로벌 호출(Ping) 알림 ──────────────────────────────────────────────────
+  StreamSubscription<List<Ping>>? _pingsSub;
+  final Set<String> _shownPingIds = {};
+  bool _isFirstPingEmission = true;
+
+  // ── 웹 캐시 자동 갱신 감지 ─────────────────────────────────────────────
+  WebVersionCheckService? _versionCheck;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      const HomeScreen(),
+      const LiveMapScreen(),
+      const CameraScreen(),
+      const GalleryScreen(),
+      const FriendListScreen(), // 프로필은 상단 헤더 아바타로 이동
+    ];
+    // 딥링크 vlog가 있으면 MainShell이 완전히 빌드된 후 플레이어를 올림
+    if (widget.initialVlog != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => VlogPlayerScreen(vlog: widget.initialVlog!),
+        ));
+      });
+    }
+    _subscribeGlobalPings();
+    _checkForAppUpdate();
+    _startWebVersionCheck();
+  }
+
+  /// 웹 캐시 자동 갱신 — 새 빌드 배포 감지 시 상단 배너 표시
+  void _startWebVersionCheck() {
+    _versionCheck = WebVersionCheckService(
+      onNewVersion: (remote) {
+        if (!mounted) return;
+        NewVersionBanner.show(context, remote);
+      },
+    )..start();
+  }
+
+  /// 신규 버전 발행 여부 확인 → 안내 시트 표시
+  Future<void> _checkForAppUpdate() async {
+    // 첫 화면 렌더 후 약간 대기 (사용자 시야 방해 최소화)
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    final info = await AppUpdateService.checkForUpdate();
+    if (info == null || !mounted) return;
+    await UpdatePromptSheet.show(context, info);
+  }
+
+  /// 어디서나 호출 받기 — 로그인 시 ping 구독
+  Future<void> _subscribeGlobalPings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await UserStatusService.ensureUserDoc(user);
+    } catch (_) {}
+    _pingsSub = UserStatusService.watchMyPings(user.uid).listen(_onPingsUpdate);
+  }
+
+  void _resubscribePings() {
+    _pingsSub?.cancel();
+    _pingsSub = null;
+    _shownPingIds.clear();
+    _isFirstPingEmission = true;
+    _subscribeGlobalPings();
+  }
+
+  void _onPingsUpdate(List<Ping> pings) {
+    if (!mounted) return;
+    // 첫 emission은 기존 ping (재진입 등) → 표시 스킵
+    if (_isFirstPingEmission) {
+      _isFirstPingEmission = false;
+      for (final p in pings) {
+        _shownPingIds.add(p.id);
+      }
+      return;
+    }
+    for (final ping in pings) {
+      if (_shownPingIds.contains(ping.id)) continue;
+      _shownPingIds.add(ping.id);
+      _showPingSnackbar(ping);
+    }
+  }
+
+  /// 강화된 ping 햅틱 패턴 — 3번 진동 + 시스템 알림음
+  void _playPingAlert() {
+    HapticFeedback.heavyImpact();
+    SystemSound.play(SystemSoundType.alert);
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (mounted) HapticFeedback.heavyImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 440), () {
+      if (mounted) HapticFeedback.mediumImpact();
+    });
+  }
+
+  void _showPingSnackbar(Ping ping) {
+    if (!mounted) return;
+    _playPingAlert();
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 7),
+        backgroundColor: AppColors.surface,
+        elevation: 6,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg)),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+        content: Row(
+          children: [
+            Text(ping.emoji, style: const TextStyle(fontSize: 26)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${ping.fromName}님이 호출했어요',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '"${ping.message}"',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                // 알림 시트 열기 (메시지 내용 확인 + 친구 지도 이동 가능)
+                NotificationsSheet.open(context);
+              },
+              child: const Text(
+                '보기',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void didChangeDependencies() {
@@ -74,16 +297,28 @@ class _MainShellState extends State<MainShell> {
 
   void _onAuthChanged() {
     if (!mounted) return;
+    final loggedIn = _authProvider?.isLoggedIn ?? false;
     // 로그아웃 후 보호 탭(촬영=2, 프로필=4)이면 홈으로 리셋
-    if (!(_authProvider?.isLoggedIn ?? true) &&
+    if (!loggedIn &&
         (_currentIndex == 2 || _currentIndex == 4)) {
       setState(() => _currentIndex = 0);
+    }
+    // ping 구독 갱신 — 로그인 시 새로 구독, 로그아웃 시 해제
+    if (loggedIn) {
+      _resubscribePings();
+    } else {
+      _pingsSub?.cancel();
+      _pingsSub = null;
+      _shownPingIds.clear();
+      _isFirstPingEmission = true;
     }
   }
 
   @override
   void dispose() {
     _authProvider?.removeListener(_onAuthChanged);
+    _pingsSub?.cancel();
+    _versionCheck?.stop();
     super.dispose();
   }
 
@@ -100,28 +335,15 @@ class _MainShellState extends State<MainShell> {
     setState(() => _currentIndex = index);
   }
 
-  /// 로그인 유도 다이얼로그
+  /// 로그인 유도 시트
   Future<void> _showLoginRequired(String feature) async {
-    final nav = Navigator.of(context); // async gap 전에 캡처
-    final goLogin = await showDialog<bool>(
-      context: context,
-      builder: (dlgCtx) => AlertDialog(
-        title: const Text('로그인 필요'),
-        content: Text('$feature 기능은 로그인 후 이용할 수 있습니다.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, true),
-            child: const Text(
-              '로그인',
-              style: TextStyle(color: AppColors.primary),
-            ),
-          ),
-        ],
-      ),
+    final nav = Navigator.of(context);
+    final goLogin = await AppSheets.confirm(
+      context,
+      icon: Icons.lock_outline,
+      title: '로그인이 필요해요',
+      message: '$feature 기능은 로그인 후 이용할 수 있습니다.',
+      confirmLabel: '로그인',
     );
     if (goLogin == true && mounted) {
       nav.push(MaterialPageRoute(builder: (_) => const LoginScreen()));
@@ -130,37 +352,88 @@ class _MainShellState extends State<MainShell> {
 
   /// 뒤로가기 처리
   /// - 홈 탭이 아닌 경우: 홈 탭으로 이동
-  /// - 홈 탭인 경우: 종료 확인 다이얼로그
+  /// - 홈 탭인 경우: 종료 확인 시트
   Future<bool> _onWillPop() async {
     if (_currentIndex != 0) {
       setState(() => _currentIndex = 0);
       return false; // pop 차단
     }
     // 홈 탭 → 종료 확인
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      builder: (dlgCtx) => AlertDialog(
-        title: const Text('앱 종료'),
-        content: const Text('앱을 종료할까요?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx, true),
-            child: const Text(
-              '종료',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
+    final shouldExit = await AppSheets.confirm(
+      context,
+      icon: Icons.exit_to_app,
+      title: '앱을 종료할까요?',
+      confirmLabel: '종료',
+      dangerous: true,
     );
     if (shouldExit == true) {
-      SystemNavigator.pop(); // 앱 종료
+      SystemNavigator.pop();
     }
-    return false; // pop은 항상 차단, 종료는 SystemNavigator로 직접 처리
+    return false;
+  }
+
+  // ── 중앙 FAB (브이로그 등록 마법사) — 롱프레스 = 체크인 ─────────────
+  Widget _buildFab() {
+    return PulsingFab(
+      isSelected: false, // 마법사는 push 라우트라서 탭 인디케이터 사용 안 함
+      onTap: () {
+        HapticFeedback.selectionClick();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const VlogUploadWizard()),
+        );
+      },
+      onLongPress: () => CheckInSheet.open(context),
+    );
+  }
+
+  // ── 탭별 고유 색상 ────────────────────────────────────────────────────
+  static const _navColors = [
+    Color(0xFF1A73E8), // 0: 홈  — 블루
+    Color(0xFF00ACC1), // 1: 지도 — 시안
+    Colors.transparent, // 2: FAB (사용 안 함)
+    Color(0xFF7C4DFF), // 3: 갤러리 — 퍼플
+    Color(0xFFEC407A), // 4: 친구 — 핑크
+  ];
+
+  // ── 하단 탭 아이템 (라벨 없음, 컬러 아이콘 + 점 인디케이터) ──────────
+  Widget _buildNavItem(int index, IconData outlined, IconData filled) {
+    final isSelected = _currentIndex == index;
+    final activeColor = _navColors[index];
+    // 다크모드 대응: 비활성 색상을 Theme의 outline으로
+    final iconColor = isSelected
+        ? activeColor
+        : Theme.of(context).colorScheme.outline;
+
+    return InkWell(
+      onTap: () => _onTabTap(index),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? filled : outlined,
+              color: iconColor,
+              size: 26,
+            ),
+            const SizedBox(height: 4),
+            // 선택 인디케이터 — 가느다란 바 (현재 탭 직관 표시)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              width: isSelected ? 16 : 0,
+              height: 3,
+              decoration: BoxDecoration(
+                color: activeColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -169,23 +442,32 @@ class _MainShellState extends State<MainShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) => _onWillPop(),
       child: Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onTabTap,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textDisabled,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
-          BottomNavigationBarItem(icon: Icon(Icons.videocam), label: '촬영'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.photo_library), label: '갤러리'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: '프로필'),
-        ],
-      ),
-    ),   // Scaffold
-    );   // PopScope
+        body: _screens[_currentIndex],
+        floatingActionButton: _buildFab(),
+        floatingActionButtonLocation:
+            FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 8,
+          shadowColor: Colors.black26,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(0, Icons.home_outlined, Icons.home),
+                _buildNavItem(1, Icons.groups_outlined, Icons.groups),
+                const SizedBox(width: 56), // FAB 공간
+                _buildNavItem(
+                    3, Icons.photo_library_outlined, Icons.photo_library),
+                _buildNavItem(4, Icons.people_outline, Icons.people),
+              ],
+            ),
+          ),
+        ),
+      ), // Scaffold
+    ); // PopScope
   }
 }
