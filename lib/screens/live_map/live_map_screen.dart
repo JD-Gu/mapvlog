@@ -87,6 +87,8 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   LatLng? _pendingCameraLocation;
   /// 첫 GPS 이동을 1회만 수행하기 위한 가드
   bool _didInitialCameraMove = false;
+  /// 포커스 체크인 카드 자동 표시를 1회만 하기 위한 가드
+  bool _focusSheetShown = false;
   /// 고해상도 마커용 — 디바이스 픽셀 비율
   double _pixelRatio = 3.0;
   /// 네트워크 사진 → ui.Image 캐시 (마커 그리기용)
@@ -629,43 +631,40 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       ));
     }
     // 체크인 자동 표시 (만료 전까지, 작은 이모지 마커 — 내 체크인 포함)
-    for (final v in _recentCheckIns) {
-      // 그룹 필터 활성 시 비멤버 친구의 체크인은 숨김
-      if (filterUids != null && !filterUids.contains(v.authorId)) continue;
+    // 홈에서 진입한 포커스 체크인은 만료·필터로 빠졌어도 항상 표시 (중복 제거)
+    final focus = widget.focusCheckIn;
+    final checkInsToShow = <Vlog>[..._recentCheckIns];
+    if (focus != null && !checkInsToShow.any((v) => v.id == focus.id)) {
+      checkInsToShow.add(focus);
+    }
+    for (final v in checkInsToShow) {
+      final isFocus = focus != null && v.id == focus.id;
+      // 그룹 필터 활성 시 비멤버 친구의 체크인은 숨김 (단, 포커스 대상은 예외)
+      if (!isFocus &&
+          filterUids != null &&
+          !filterUids.contains(v.authorId)) {
+        continue;
+      }
       final icon = await _checkInMarkerBitmap(v.markerEmoji ?? '📍');
       markers.add(Marker(
         markerId: MarkerId('checkin_${v.id}'),
         position: LatLng(v.lat, v.lng),
         icon: icon,
         anchor: const Offset(0.5, 0.5),
-        zIndexInt: 50,
+        zIndexInt: isFocus ? 100 : 50,
         onTap: () => _showCheckInSheet(v),
       ));
     }
 
-    // 홈에서 체크인 카드 탭 시 임시 마커 추가 (페이지가 살아있는 동안만)
-    final focus = widget.focusCheckIn;
+    // 포커스된 체크인 — 위치 강조 링만 (구글 기본 마커 없이 커스텀 아이콘 사용)
     if (focus != null) {
-      final pos = LatLng(focus.lat, focus.lng);
       circles.add(Circle(
         circleId: const CircleId('focus_checkin'),
-        center: pos,
-        radius: 80,
-        fillColor: const Color(0xFF1A73E8).withValues(alpha: 0.12),
+        center: LatLng(focus.lat, focus.lng),
+        radius: 70,
+        fillColor: const Color(0xFF1A73E8).withValues(alpha: 0.10),
         strokeColor: const Color(0xFF1A73E8),
         strokeWidth: 2,
-      ));
-      markers.add(Marker(
-        markerId: const MarkerId('focus_checkin'),
-        position: pos,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure),
-        infoWindow: InfoWindow(
-          title:
-              '${focus.markerEmoji ?? '📍'} ${focus.title.isEmpty ? focus.placeName : focus.title}',
-          snippet: '${focus.authorName} · 체크인 위치',
-        ),
-        zIndexInt: 100,
       ));
     }
 
@@ -873,10 +872,13 @@ class _LiveMapScreenState extends State<LiveMapScreen>
                 _didInitialCameraMove = true;
                 c.animateCamera(CameraUpdate.newLatLngZoom(
                     LatLng(focus.lat, focus.lng), 16));
-                // 마커가 그려진 다음에 InfoWindow 자동 표시
-                Future.delayed(const Duration(milliseconds: 600), () {
-                  c.showMarkerInfoWindow(const MarkerId('focus_checkin'));
-                });
+                // 아이콘 위치로 이동 후 체크인 카드 자동 표시 (아이콘+카드 함께)
+                if (!_focusSheetShown) {
+                  _focusSheetShown = true;
+                  Future.delayed(const Duration(milliseconds: 650), () {
+                    if (mounted) _showCheckInSheet(focus);
+                  });
+                }
               } else if (_pendingCameraLocation != null) {
                 // 지도 준비 전에 도착한 GPS 위치가 있으면 즉시 이동
                 _didInitialCameraMove = true;
