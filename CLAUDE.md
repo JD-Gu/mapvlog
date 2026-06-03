@@ -1,1 +1,285 @@
-# MapVlog - Claude Code 개발 지침## 📌 프로젝트 개요* **서비스명**: MapVlog (맵브이로그)* **목적**: 브이로그 영상·사진에 GPS 타임스탬프를 기록하여 지도와 실시간 연동하는 플랫폼* **개발자**: 구자덕 (1인 개발, Claude Code와 협업)* **GitHub**: https://github.com/JD-Gu/mapvlog\---## 🛠 기술 스택|구분|기술||-|-||프레임워크|Flutter 3.x (Dart)||플랫폼|Android / iOS / Web (Flutter Web)||지도|Google Maps API||백엔드|Firebase (별도 서버 없음)||데이터베이스|Firebase Firestore||인증|Firebase Auth (Google 로그인, 이메일)||스토리지|Firebase Storage||웹 배포|Vercel (Flutter Web)||CI/CD|GitHub → Vercel 자동 배포||상태관리|Provider|\---## 📁 프로젝트 폴더 구조```mapvlog/├── lib/│   ├── main.dart                        # 앱 진입점│   ├── app.dart                         # 앱 설정, 라우팅│   ├── firebase\\\\\\\\\\\\\\\_options.dart            # FlutterFire 자동 생성│   ├── screens/│   │   ├── home/                        # 메인 홈 피드│   │   ├── map/                         # 전체 브이로그 지도 (클러스터링)│   │   ├── camera/                      # 촬영·업로드 화면│   │   ├── gallery/                     # 그리드 + 포토맵 갤러리│   │   ├── vlog/                        # 브이로그 플레이어 (영상+지도 동기화)│   │   ├── profile/                     # 사용자 프로필│   │   ├── auth/                        # 로그인 화면│   │   ├── onboarding/                  # 온보딩│   │   └── splash\\\\\\\\\\\\\\\_screen.dart│   ├── widgets/│   │   └── vlog\\\\\\\\\\\\\\\_card.dart               # 공통 카드 위젯│   ├── models/│   │   ├── vlog.dart                    # Firestore 브이로그 모델│   │   ├── gps\\\\\\\\\\\\\\\_point.dart               # GPS 좌표 모델│   │   ├── recording\\\\\\\\\\\\\\\_session.dart       # 녹화 세션 모델│   │   └── media\\\\\\\\\\\\\\\_item.dart              # 로컬 미디어 캐시 모델│   ├── services/│   │   ├── firestore\\\\\\\\\\\\\\\_service.dart       # Firestore CRUD + 실시간 스트림│   │   ├── firebase\\\\\\\\\\\\\\\_storage\\\\\\\\\\\\\\\_service.dart# Firebase Storage 업로드 (웹/모바일)│   │   ├── gps\\\\\\\\\\\\\\\_tracking\\\\\\\\\\\\\\\_service.dart    # GPS 1초 단위 추적│   │   ├── gps\\\\\\\\\\\\\\\_interpolator.dart        # GPS 보간 알고리즘│   │   ├── location\\\\\\\\\\\\\\\_service.dart        # 현재 위치 조회│   │   ├── upload\\\\\\\\\\\\\\\_manager.dart          # 로컬 캐시 + Firebase 업로드 유틸│   │   └── media\\\\\\\\\\\\\\\_storage\\\\\\\\\\\\\\\_service.dart   # 로컬 SharedPreferences 캐시│   ├── providers/│   │   └── auth\\\\\\\\\\\\\\\_provider.dart           # Firebase Auth 상태관리│   └── utils/│       └── constants.dart               # 색상, 간격, 반지름 등 디자인 상수├── android/├── ios/├── web/├── .env                                 # API 키 (gitignore)├── pubspec.yaml└── CLAUDE.md                            # 이 파일```\---## 🗺 핵심 기능### Phase 1 - MVP ✅ 완료1. **GPS 연동 촬영 모듈**   * 동영상·사진 촬영 시 1초 단위 GPS 좌표 자동 기록   * 웹: `image\\\\\\\\\\\\\\\_picker`로 파일 선택 후 등록   * 모바일: 카메라 직접 촬영 후 등록2. **동영상-지도 실시간 동기화 플레이어**   * 영상 재생 타임코드와 지도 마커 실시간 연동   * GPS 보간법 적용 (타임코드 → 좌표 인덱스 변환)3. **지도 + 클러스터링**   * 전체 브이로그 위치 마커 표시   * zoom 레벨 기반 자동 클러스터링 (커스텀 구현)   * 마커 탭 시 브이로그 팝업 → 재생4. **Firebase 연동**   * Firebase Auth: 이메일/Google 로그인 (웹은 `signInWithPopup`)   * Firebase Storage: 영상·사진 업로드 (웹=putData, 모바일=putFile)   * Firestore: 브이로그 저장·조회·실시간 스트림5. **갤러리**   * 그리드 탭: 전체 브이로그 썸네일 목록   * 포토맵 탭: GPS 기록된 브이로그를 지도 위에 클러스터 마커로 표시### Phase 2 - 확장 (예정)6. **소셜 기능**   * 좋아요, 팔로우, 공유 링크   * 사용자별 피드 분리7. **Flutter Web 배포**   * Vercel 연동 자동 배포   * 반응형 웹 UI\---## 📦 주요 패키지```yamldependencies:  # 지도  google\\\\\\\\\\\\\\\_maps\\\\\\\\\\\\\\\_flutter: ^2.5.3  # GPS 위치  geolocator: ^13.0.1  # 카메라·사진  camera: ^0.11.0  image\\\\\\\\\\\\\\\_picker: ^1.1.2  exif: ^3.3.0  # 영상 플레이어  video\\\\\\\\\\\\\\\_player: ^2.9.1  # Firebase  firebase\\\\\\\\\\\\\\\_core: ^3.6.0  firebase\\\\\\\\\\\\\\\_auth: ^5.3.1  cloud\\\\\\\\\\\\\\\_firestore: ^5.4.4  firebase\\\\\\\\\\\\\\\_storage: ^12.3.4  # 상태관리  provider: ^6.1.2  # 공유  share\\\\\\\\\\\\\\\_plus: ^10.0.0  # 로컬 저장  shared\\\\\\\\\\\\\\\_preferences: ^2.3.2  sqflite: ^2.3.3+1  # Google 로그인 (모바일)  google\\\\\\\\\\\\\\\_sign\\\\\\\\\\\\\\\_in: ^6.2.1  # 환경변수  flutter\\\\\\\\\\\\\\\_dotenv: ^5.2.1```\---## 🎨 UI/UX 가이드### 디자인 원칙* **심플하고 직관적**: 현장에서 빠르게 촬영·기록 가능한 UX* **지도 중심**: 지도가 항상 메인 뷰에 위치* **모바일 퍼스트**: 모바일 UX 기준으로 설계 후 웹 반응형 적용### 컬러 팔레트```dartprimary:         Color(0xFF1A73E8)  // Google Bluesecondary:       Color(0xFF34A853)  // Google Greenbackground:      Color(0xFFF8F9FA)  // Light Graysurface:         Color(0xFFFFFFFF)  // WhitesurfaceVariant:  Color(0xFFF1F3F4)  // Subtle Grayerror:           Color(0xFFEA4335)  // RedtextPrimary:     Color(0xFF202124)textSecondary:   Color(0xFF5F6368)textDisabled:    Color(0xFFBDC1C6)```### 주요 화면1. **홈** — Firestore 실시간 피드 (VlogCard 목록)2. **지도** — 전체 브이로그 위치 클러스터 마커3. **촬영** — GPS 연동 카메라 / 파일 선택 (웹)4. **갤러리** — 그리드 탭 + 포토맵 탭5. **플레이어** — 영상 + 동기화 지도6. **프로필** — 내 브이로그 관리\---## 💻 개발 규칙### 코드 스타일* Dart 공식 스타일 가이드 준수* 파일명: `snake\\\\\\\\\\\\\\\_case.dart`* 클래스명: `PascalCase`* 변수·함수명: `camelCase`* 상수: `kConstantName` 또는 `AppColors.xxx`### 커밋 메시지 규칙```feat: 새 기능 추가fix: 버그 수정ui: UI/UX 변경refactor: 코드 리팩토링docs: 문서 수정test: 테스트 추가chore: 설정·빌드 변경```### 브랜치 전략```main        ← 배포용 (Vercel 자동 배포)develop     ← 개발 통합feature/\\\\\\\\\\\\\\\*   ← 기능별 개발fix/\\\\\\\\\\\\\\\*       ← 버그 수정```### 개발 환경* **IDE**: Visual Studio Code* **Flutter**: 3.41.x stable* **Dart**: 3.x* **Android Studio**: SDK 관리 전용* **에뮬레이터**: Chrome (웹), Android 에뮬레이터\---## 🚀 실행 명령어```bash# 웹으로 실행 (개발 중 주로 사용)flutter run -d chrome# Android 에뮬레이터로 실행flutter run -d android# 빌드flutter build web          # 웹 배포용flutter build apk          # Android APKflutter build appbundle    # Google Play용# 패키지 설치flutter pub get# 코드 분석flutter analyze# 테스트flutter test```\---## 🔑 환경변수 관리민감한 키는 `.env` 파일로 관리 (`.gitignore`에 반드시 포함)```GOOGLE\\\\\\\\\\\\\\\_MAPS\\\\\\\\\\\\\\\_API\\\\\\\\\\\\\\\_KEY=```Firebase 설정은 `google-services.json` (Android), `GoogleService-Info.plist` (iOS),`firebase\\\\\\\\\\\\\\\_options.dart` (Web/Flutter)로 관리합니다.\---## 🔄 현재 진행 상황### 개발환경* OS: Windows 11 Pro* Flutter: 3.41.6 stable* Android Studio: 설치 완료 (Android SDK 36.1.0)* VSCode: Flutter 확장 설치 완료### 프로젝트 현황* 프로젝트 생성: `C:\\\\\\\\\\\\\\\\projects\\\\\\\\\\\\\\\\mapvlog` ✅* GitHub 레포: https://github.com/JD-Gu/mapvlog (push 예정)* Vercel 연동: 예정### 완료된 단계* \[x] 개발환경 세팅* \[x] CLAUDE.md 작성* \[x] 프로젝트 기반 설정 (라우팅, 상수, 테마)* \[x] 인증 화면 (이메일 로그인, Google 로그인)* \[x] 지도 화면 (클러스터링 마커, 팝업)* \[x] 홈 화면 (Firestore 실시간 피드)* \[x] GPS 연동 촬영 (모바일 카메라, 웹 파일 선택)* \[x] 영상·지도 동기화 플레이어* \[x] Firebase Storage 업로드 (웹/모바일 통합)* \[x] 갤러리 (그리드 + 포토맵, 클러스터링)* \[x] **Phase 1 MVP 완성** ✅### 다음 작업1. **실 기기 API 키 연결** (대표님 직접)   * Google Maps API 키 → `android/app/src/main/AndroidManifest.xml`, `ios/Runner/AppDelegate.swift`, `web/index.html`   * `.env` 파일에 `GOOGLE\\\\\\\\\\\\\\\_MAPS\\\\\\\\\\\\\\\_API\\\\\\\\\\\\\\\_KEY` 입력2. **GitHub push**3. **Vercel 연동** — Flutter Web 배포\---## 📋 참고 리소스* [Flutter 공식 문서](https://docs.flutter.dev)* [FlutterFire 공식 문서](https://firebase.flutter.dev)* [google\_maps\_flutter](https://pub.dev/packages/google_maps_flutter)* [geolocator 사용 가이드](https://pub.dev/packages/geolocator)* [Firebase Storage Flutter](https://firebase.flutter.dev/docs/storage/overview)\---## ⚠️ 주의사항* GPS 데이터는 항상 **null 체크** 후 사용* 영상 파일은 용량이 크므로 **압축 후 업로드** 권장* API 키는 절대 **코드에 하드코딩 금지** (`.env` 또는 Firebase 콘솔 사용)* Flutter Web에서는 `camera` 패키지 미지원 → 웹은 `image\\\\\\\\\\\\\\\_picker`로 파일 선택* Google 로그인: 웹은 `signInWithPopup`, 모바일은 `google\\\\\\\\\\\\\\\_sign\\\\\\\\\\\\\\\_in` 패키지* iOS 배포 시 `Info.plist`에 카메라·위치·마이크 권한 명시 필요* Firebase Storage 업로드: 웹=`putData(bytes)`, 모바일=`putFile(File)` (메모리 절약)
+# PinFlick — Claude Code 개발 지침
+
+## 📌 프로젝트 개요
+
+* **서비스명**: PinFlick (핀플릭)
+* **슬로건**: 📍 친구의 위치로 핀(Pin), 친구의 일상을 플릭(Flick)
+* **목적**: 친구의 실시간 위치를 지도에서 공유하고, 위치 기반 브이로그·체크인을 남기는 소셜 위치 플랫폼
+* **개발자**: 구자덕 (1인 개발, Claude Code와 협업)
+* **배포**: https://pinflick.web.app (Firebase Hosting) · Android APK 베타 · PWA
+* **레포 경로**: `C:\projects\mapvlog` (구 MapVlog → PinFlick 리브랜딩, 폴더명은 유지)
+
+> ⚠️ Firebase 프로젝트 ID는 `mapvlog-1f06d` 이지만 서비스명/도메인은 **PinFlick / pinflick.web.app** 입니다.
+
+---
+
+## 🛠 기술 스택
+
+| 구분 | 기술 |
+|------|------|
+| 프레임워크 | Flutter 3.41.x (Dart 3.x) |
+| 플랫폼 | Android · Web(PWA). iOS는 미대응 |
+| 지도 | Google Maps (`google_maps_flutter`) |
+| 백엔드 | Firebase only (별도 서버 없음) |
+| 인증 | Firebase Auth — **Google 로그인 전용** |
+| DB | Cloud Firestore |
+| 스토리지 | Firebase Storage |
+| 푸시 | Firebase Cloud Messaging (FCM) + Cloud Functions |
+| 서버리스 | Cloud Functions 2nd gen (Node 22, asia-northeast3) |
+| 웹 배포 | Firebase Hosting (`firebase deploy --only hosting`) |
+| 상태관리 | Provider |
+| 역지오코딩 | Nominatim(OSM) HTTP + 모바일 기기 Geocoder fallback |
+
+---
+
+## 📁 프로젝트 폴더 구조
+
+```
+mapvlog/  (서비스명은 PinFlick)
+├── lib/
+│   ├── main.dart                      # 진입점 (Firebase init, FCM 백그라운드 핸들러)
+│   ├── app.dart                       # MaterialApp, 라우팅, MainShell(하단탭+FAB), 코치마크
+│   ├── firebase_options.dart          # FlutterFire 자동 생성
+│   ├── screens/
+│   │   ├── splash_screen.dart         # 스플래시 + 진입 분기(딥링크/온보딩/로그인)
+│   │   ├── onboarding/                # 온보딩 슬라이드
+│   │   ├── auth/                      # 로그인 (Google 전용)
+│   │   ├── home/                      # 홈 피드 (친구 vlog/체크인 스트림)
+│   │   ├── live_map/                  # 친구 실시간 위치 지도 ★핵심
+│   │   ├── camera/                    # 브이로그 등록 마법사 (vlog_upload_wizard)
+│   │   ├── gallery/                   # 그리드 + 포토맵 갤러리
+│   │   ├── vlog/                      # 플레이어, 스와이퍼, 수정 화면(vlog_edit_screen)
+│   │   ├── friends/                   # 친구 목록·검색·QR·그룹
+│   │   ├── search/ · users/           # 검색 / 사용자 프로필
+│   │   ├── profile/                   # 마이페이지 (저장한 vlog 등)
+│   │   └── legal/                     # 약관·개인정보 처리방침
+│   ├── widgets/
+│   │   ├── vlog_card.dart             # 피드 카드
+│   │   ├── check_in_sheet.dart        # 체크인 등록·수정 시트 (공용)
+│   │   ├── comments_sheet.dart        # 댓글·답글·멘션
+│   │   ├── map_picker_sheet.dart      # 지도에서 위치 선택 (공용) + LocationActionButton
+│   │   ├── visibility_picker.dart     # 공개 범위 선택
+│   │   ├── new_version_banner.dart    # 웹 OTA 갱신 배너
+│   │   ├── first_run_coachmarks.dart  # 첫 로그인 3단계 가이드
+│   │   └── ... (reaction_bar, likers_sheet, notifications_sheet 등)
+│   ├── models/
+│   │   ├── vlog.dart                  # 브이로그/체크인 (isCheckIn, expiresAt, visibility)
+│   │   ├── friendship.dart            # 친구 관계 (relType, individualMode)
+│   │   ├── friend_group.dart          # 친구 그룹 (GroupMode)
+│   │   ├── user_status.dart           # 위치/프라이버시 모드, 상태, Ping
+│   │   ├── comment.dart · reaction.dart · gps_point.dart
+│   │   └── remote_version.dart        # version.json 파싱 (OTA)
+│   ├── services/
+│   │   ├── firestore_service.dart     # Firestore CRUD + 실시간 스트림
+│   │   ├── firebase_storage_service.dart
+│   │   ├── friend_service.dart · friend_group_service.dart
+│   │   ├── user_status_service.dart   # 위치 업데이트·프라이버시·Ping
+│   │   ├── reaction_service.dart
+│   │   ├── push_service.dart          # FCM 토큰/권한/포그라운드·탭 핸들러
+│   │   ├── geocoding_service.dart     # Nominatim 역지오코딩
+│   │   ├── gps_tracking_service.dart · gps_interpolator.dart · location_service.dart
+│   │   ├── web_version_check_service.dart  # version.json 폴링 (OTA)
+│   │   └── web_cache_reload_(stub|io|web).dart  # 조건부 임포트
+│   ├── providers/  (auth_provider, theme_provider)
+│   └── utils/      (constants ← 버전·색상·VAPID키, marker_emojis, location_format 등)
+├── functions/                         # Cloud Functions (FCM 발송 + 만료 체크인 정리)
+│   └── index.js
+├── android/ · web/                    # web/downloads/pinflick.apk (베타 APK)
+├── tools/killswitch_sw.js             # 레거시 SW 자폭 스크립트
+├── firestore.rules · firestore.indexes.json · firebase.json
+├── web/version.json                   # OTA 버전 정보 (version/build/notes)
+└── docs/                              # 설계·정책 문서
+```
+
+---
+
+## 🗺 핵심 기능 (현재 구현 상태)
+
+### 1. 친구 실시간 위치 지도 (Live Map) ★핵심
+* 친구들의 현재 위치를 지도에 아바타 마커로 표시 (꼭지점이 실제 좌표)
+* **프라이버시 3모드** (그룹 베이스라인):
+  * 💖 **베프** — 실시간 정확 위치
+  * 🙈 **부끄럼** — 동·반경(≈500m) 단위 대략 위치(안개)
+  * 🥷 **잠수** — 숨김/오프라인·마지막 위치 고정
+* **친구별 개별 오버라이드** (그룹보다 우선): 🎯 항상 정확히 · 🥷 항상 잠수 · 🔗 그룹 설정 따름
+* 친구 그룹(커스텀 분류), 절전 로직(가속도계 이동감지 + 배터리 기반 위치 갱신 주기)
+* 호출(Ping), 상태 설정
+
+### 2. 체크인
+* 위치 + 이모지 + 한 줄 메시지 (미디어 없음, `isCheckIn=true`)
+* **표시 시간 선택**(1시간/6시간/오늘 종료/24시간) → 지도에서 만료 후 숨김 + 서버 자동 삭제
+* 등록·수정 모두 동일한 `CheckInSheet` UI (위치 새로고침/지도선택/주소, 공개범위)
+
+### 3. 브이로그
+* **등록 마법사**(`vlog_upload_wizard`): 멀티 사진/영상, 압축, 폰 갤러리 자동저장, 카테고리 이모지, 2줄 스토리, 위치 보정(새로고침/지도/주소)
+* **수정**(`vlog_edit_screen`): 단일 화면에서 사진·제목·장소·카테고리·위치·공개범위 편집
+* **플레이어**: 영상 재생 ↔ 지도 마커 GPS 보간 동기화
+
+### 4. 소셜
+* 홈 피드(친구 vlog/체크인), 댓글·답글·@멘션, 좋아요, 저장(북마크), 이모지 리액션
+* 친구 추가(검색·QR), 친구 요청 수락/거절
+* 공개 범위: 🌐 전체공개 · 👥 그룹공개 · 🔒 나만보기
+
+### 5. 알림 (FCM)
+* 호출(Ping) · 친구 요청 · 댓글/답글 → 푸시 (Cloud Functions가 발송)
+* 토큰: `users/{uid}/fcmTokens/{token}` (web=data-only, android=notification)
+
+### 6. 인프라/UX
+* 첫 로그인 3단계 코치마크 가이드
+* 웹 OTA 갱신: `version.json` 폴링 → killswitch SW로 캐시 무효화 + 새 빌드 로드
+* 갤러리(그리드 + 포토맵)
+
+---
+
+## ☁️ Cloud Functions (functions/index.js)
+
+리전 `asia-northeast3`, Node 22, 2nd gen. **Blaze 플랜 필요.**
+
+| 함수 | 트리거 | 동작 |
+|------|--------|------|
+| `onPingCreated` | `users/{uid}/pings/{id}` onCreate | 호출 푸시 |
+| `onFriendDocCreated` | `users/{uid}/friends/{id}` onCreate (status=incoming) | 친구요청 푸시 |
+| `onCommentCreated` | `vlogs/{vlogId}/comments/{id}` onCreate | 댓글/답글 푸시(스레드 참여자 전원) |
+| `cleanupExpiredCheckins` | 스케줄 (매시간) | 만료 체크인 recursiveDelete |
+
+배포: `firebase deploy --only functions` (functions/ 에서 `npm install` 선행)
+
+---
+
+## 🔥 Firestore 데이터 모델 (요약)
+
+```
+users/{uid}                      # 프로필, status, privacyMode, location
+  ├── friends/{friendUid}        # 관계 (status, relType, individualMode)
+  ├── friendGroups/{groupId}     # 커스텀 친구 그룹
+  ├── pings/{pingId}             # 받은 호출 (1시간 이내)
+  └── fcmTokens/{token}          # FCM 토큰 {platform, updatedAt}
+vlogs/{vlogId}                   # 브이로그 + 체크인(isCheckIn, expiresAt)
+  ├── comments/{commentId}       # 댓글/답글(parentId)
+  ├── likes/{uid} · saves/{uid} · reactions/{uid_emoji}
+config/{configId}                # 앱 설정
+```
+* `saves` 컬렉션그룹 쿼리는 **`uid` 필드 기반 규칙**으로 인가 (문서ID 아님).
+* 자세한 스키마: `docs/05_db_schema.md`
+
+---
+
+## 🎨 UI/UX 가이드
+
+### 컬러 팔레트 (`lib/utils/constants.dart` AppColors)
+```dart
+primary:        Color(0xFF1A73E8)  // Google Blue
+secondary:      Color(0xFF34A853)  // Green
+error:          Color(0xFFEA4335)  // Red
+background:     Color(0xFFF8F9FA)
+surface:        Color(0xFFFFFFFF)
+textPrimary:    Color(0xFF202124)
+textSecondary:  Color(0xFF5F6368)
+textDisabled:   Color(0xFFBDC1C6)
+```
+* **다크모드 지원** — 색상은 가급적 `Theme.of(context).colorScheme.*` 사용. 고정 `AppColors.textPrimary` 등을 텍스트/아이콘 색에 쓰면 다크모드에서 안 보이므로 주의.
+* 하단 탭별 색: 홈(블루)·친구지도(시안)·갤러리(퍼플)·친구(핑크). 가운데 FAB = 등록 마법사(롱프레스=체크인).
+
+---
+
+## 💻 개발 규칙
+
+### 코드 스타일
+* 파일 `snake_case.dart` · 클래스 `PascalCase` · 변수/함수 `camelCase` · 상수 `kXxx` / `AppColors.xxx`
+* 공용 위젯은 `lib/widgets/` 로 추출해 등록·수정에서 재사용 (예: `CheckInSheet`, `MapPickerSheet`, `EmojiPickerRow`).
+
+### 커밋 메시지
+```
+feat: 새 기능   fix: 버그수정   ui: UI/UX   refactor: 리팩토링
+docs: 문서   chore: 설정·빌드
+```
+
+### Git
+* `main` ← 배포용. 기능은 작업 후 main 커밋(현재 1인 개발이라 main 직접 사용).
+* 커밋 끝에 `Co-Authored-By: Claude ...` 포함.
+
+---
+
+## 🚀 빌드 & 배포 절차 (중요)
+
+웹은 **`--pwa-strategy=none`** 로 빌드하고, 캐시 무효화용 **killswitch SW를 주입**한 뒤 배포한다.
+
+```bash
+# 1) 버전 올리기 (3곳 동기화 필수)
+#    - pubspec.yaml         version: X.Y.Z+B
+#    - lib/utils/constants.dart  kAppVersion / kAppBuildNumber
+#    - web/version.json     version / build / notes(업데이트 내역)
+
+# 2) 웹 빌드 + killswitch SW 주입
+flutter build web --release --pwa-strategy=none
+cp tools/killswitch_sw.js build/web/flutter_service_worker.js
+
+# 3) APK 빌드 → 다운로드 폴더로 복사
+flutter build apk --release
+cp build/app/outputs/flutter-apk/app-release.apk build/web/downloads/pinflick.apk
+
+# 4) 배포
+firebase deploy --only hosting              # 웹 + APK
+firebase deploy --only firestore:rules      # 규칙 변경 시
+firebase deploy --only functions            # 함수 변경 시
+```
+
+* `web/version.json` 의 `build` 가 `kAppBuildNumber` 보다 크면 실행 중인 앱에 OTA 갱신 배너가 뜬다.
+* APK 는 `?v={build}` 캐시버스트로 받게 되어 있음.
+
+### 자주 쓰는 명령
+```bash
+flutter run -d chrome      # 개발
+flutter analyze            # 분석 (커밋 전 필수)
+flutter pub get
+```
+
+---
+
+## 🔑 환경변수 / 키
+
+* `.env` (gitignore): `GOOGLE_MAPS_API_KEY`
+* Firebase: `google-services.json`(Android), `firebase_options.dart`(Web/Flutter)
+* **웹 FCM VAPID 키**: `lib/utils/constants.dart` 의 `kWebVapidKey` (콘솔 → Cloud Messaging → 웹 푸시 인증서)
+
+---
+
+## ⚠️ 주의사항
+
+* GPS·위치 데이터는 항상 **null 체크**.
+* 색상은 다크모드 대응 위해 **colorScheme 우선** (고정색 지양).
+* Flutter Web은 `camera` 미지원 → 웹은 `image_picker` 파일 선택.
+* 역지오코딩은 `GeocodingService`(Nominatim, 웹 동작) 우선 — `geocoding` 패키지의 `placemarkFromCoordinates` 는 웹 미지원이라 모바일 fallback 용으로만.
+* 바텀시트/스와이퍼 안의 `GoogleMap` 은 제스처 경합 방지를 위해 `EagerGestureRecognizer` 지정.
+* FCM 발송은 Cloud Functions(Blaze)에서만 — 클라이언트에서 직접 발송 불가.
+* 체크인 만료 삭제는 정시 배치(최대 ~1시간 지연), 지도 표시는 즉시 숨김.
+
+---
+
+## 📦 주요 패키지
+
+```yaml
+google_maps_flutter, geolocator, geocoding        # 지도·위치
+camera, image_picker, image_cropper, exif         # 촬영·사진
+video_player, video_compress, gal                 # 영상·갤러리저장
+firebase_core/auth/firestore/storage/messaging    # Firebase + FCM
+google_sign_in                                    # 구글 로그인
+provider                                          # 상태관리
+share_plus, url_launcher                          # 공유/외부열기
+shared_preferences, sqflite, path_provider        # 로컬
+qr_flutter, mobile_scanner                        # 친구 QR
+sensors_plus, battery_plus                        # 라이브맵 절전
+visibility_detector, flutter_dropzone             # 피드 자동재생/웹 드롭
+http, flutter_dotenv                              # 네트워크/환경변수
+```
+
+---
+
+## 🔄 현재 상태
+
+* **버전**: 1.56.2+83 (BETA)
+* **Phase 1 MVP + 소셜·위치공유·FCM·체크인 완료**, Firebase Hosting 운영 중
+* 개발 환경: Windows 11 / Flutter 3.41.x / VS Code
+
+### 다음 후보
+* iOS 대응(APNs), Play Store 정식 출시, 검색·해시태그 고도화

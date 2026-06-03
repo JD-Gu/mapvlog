@@ -2,128 +2,96 @@
 
 ## 개요
 
-MapVlog는 GPS 타임스탬프 기반 브이로그 플랫폼으로, Flutter 크로스플랫폼 앱 + Node.js 백엔드 + Firebase + AWS S3 구조로 설계됩니다.
+PinFlick은 **Flutter 단일 코드베이스(Android·Web) + Firebase 백엔드**로만 구성된 서버리스 아키텍처입니다.
+별도의 애플리케이션 서버(Node 등)나 외부 스토리지(S3 등)는 사용하지 않습니다.
+
+> 이전 설계의 Node.js/Express + AWS S3 구성은 폐기되었습니다. 모든 백엔드는 Firebase로 통합되었습니다.
 
 ---
 
-## 전체 시스템 구성도
+## 전체 구성도
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client Layer                         │
-│                                                             │
-│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
-│   │  Android App │   │   iOS App    │   │  Flutter Web │  │
-│   │ (Flutter)    │   │  (Flutter)   │   │  (Vercel)    │  │
-│   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘  │
-└──────────┼────────────────── ┼─────────────────┼───────────┘
-           │                   │                 │
-           └───────────────────┼─────────────────┘
-                               │ HTTPS / REST API
-┌──────────────────────────────▼──────────────────────────────┐
-│                       Backend Layer                         │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐  │
-│   │           Node.js + Express API Server              │  │
-│   │                 (AWS EC2 / NCP)                     │  │
-│   │                                                     │  │
-│   │  - REST API 엔드포인트 처리                            │  │
-│   │  - GPS 데이터 인덱싱 및 보간 처리                       │  │
-│   │  - 영상·사진 업로드 Pre-signed URL 발급                 │  │
-│   │  - 장소 정보 API 중계 (Google Places / 카카오)          │  │
-│   └──────────────┬──────────────┬──────────────────────┘  │
-└──────────────────┼──────────────┼───────────────────────────┘
-                   │              │
-       ┌───────────▼──┐    ┌──────▼───────────┐
-       │   Firebase   │    │     AWS S3 +     │
-       │  Firestore   │    │   CloudFront     │
-       │  Firebase    │    │   CDN            │
-       │  Auth        │    │  (영상·사진 저장)  │
-       └──────────────┘    └──────────────────┘
+┌──────────────────────────────────────────────┐
+│                Client (Flutter)               │
+│   Android App        │        Web (PWA)        │
+│   - 친구 실시간 지도 / 브이로그 / 체크인 / 피드    │
+│   - Provider 상태관리 · google_maps_flutter     │
+└───────────────┬───────────────────────────────┘
+                │  Firebase SDK (직접 연결)
+   ┌────────────┼─────────────┬───────────────┬─────────────┐
+   ▼            ▼             ▼               ▼             ▼
+┌────────┐ ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌──────────┐
+│Firebase│ │Cloud     │ │ Firebase  │ │  Cloud      │ │ Firebase │
+│Auth    │ │Firestore │ │ Storage   │ │  Functions  │ │ Hosting  │
+│(Google)│ │(DB+실시간)│ │(사진·영상)│ │(FCM/정리)   │ │(웹 배포) │
+└────────┘ └──────────┘ └───────────┘ └─────┬───────┘ └──────────┘
+                                            │ FCM 발송
+                                            ▼
+                                      ┌──────────┐
+                                      │   FCM    │ → 기기 푸시
+                                      └──────────┘
 ```
 
 ---
 
 ## 레이어별 역할
 
-### 1. Client Layer (Flutter)
+### 1. Client (Flutter)
+* Android / Web(PWA) 동일 코드베이스.
+* Firebase SDK로 Firestore·Auth·Storage·FCM에 **직접** 연결 (중간 API 서버 없음).
+* 지도: `google_maps_flutter`, 위치: `geolocator`, 역지오코딩: Nominatim(OSM) HTTP.
+* 상태관리: Provider.
 
-| 구분 | 설명 |
-|------|------|
-| Android / iOS | GPS 연동 촬영, 영상-지도 동기화 플레이어 |
-| Flutter Web | 브이로그 공유 뷰어, 반응형 웹 UI |
-| 상태관리 | Provider 또는 Riverpod |
-| 지도 렌더링 | google_maps_flutter |
-| 영상 재생 | video_player |
+### 2. Firebase Auth
+* **Google 로그인 전용** (웹 `signInWithPopup`, 모바일 `google_sign_in`).
 
-### 2. Backend Layer (Node.js + Express)
+### 3. Cloud Firestore
+* 사용자/친구/그룹/위치, 브이로그/체크인, 댓글/좋아요/저장/리액션, FCM 토큰 저장.
+* 실시간 스트림으로 피드·친구 위치·댓글 등 구독.
+* 접근 제어는 `firestore.rules`, 복합 인덱스는 `firestore.indexes.json`.
 
-| 역할 | 설명 |
-|------|------|
-| REST API | 브이로그 CRUD, 사용자 관리 |
-| GPS 인덱싱 | 타임코드 ↔ GPS 좌표 변환 알고리즘 |
-| 업로드 처리 | AWS S3 Pre-signed URL 발급 |
-| 장소 API 중계 | Google Places / 카카오 로컬 API 프록시 |
+### 4. Firebase Storage
+* 사진·영상 원본 저장 (웹 `putData`, 모바일 `putFile`). 영상은 `video_compress`로 압축 후 업로드.
 
-### 3. Firebase
+### 5. Cloud Functions (2nd gen · Node 22 · asia-northeast3)
+* Firestore 트리거로 **FCM 푸시 발송**(호출·친구요청·댓글) + **만료 체크인 정리**(스케줄).
+* Blaze 요금제 필요.
 
-| 서비스 | 용도 |
-|--------|------|
-| Firebase Auth | 소셜 로그인 (Google, Apple, Kakao) |
-| Cloud Firestore | 브이로그 메타데이터, 사용자 정보, GPS 트랙 |
-
-### 4. AWS S3 + CloudFront
-
-| 역할 | 설명 |
-|------|------|
-| S3 | 영상 파일, 사진 파일 원본 저장 |
-| CloudFront | CDN을 통한 빠른 미디어 스트리밍 |
+### 6. Firebase Hosting
+* Flutter Web 정적 배포 (`pinflick.web.app`). 베타 APK도 `downloads/` 로 함께 제공.
 
 ---
 
 ## 데이터 흐름
 
-### 촬영 → 업로드 흐름
-
+### 친구 위치 공유
 ```
-사용자 촬영
-    │
-    ▼
-Flutter 앱에서 GPS 타임스탬프 JSON 생성
-    │
-    ▼
-백엔드에 Pre-signed URL 요청
-    │
-    ▼
-AWS S3에 직접 영상/사진 업로드
-    │
-    ▼
-Firestore에 메타데이터(GPS 트랙, 장소, 제목 등) 저장
-    │
-    ▼
-업로드 완료 → 브이로그 목록에 노출
+내 기기 위치 변경 → (프라이버시 모드에 따라 정확/안개/고정 가공)
+  → Firestore users/{uid}.location 업데이트
+  → 친구 클라이언트가 실시간 스트림으로 수신 → 지도 마커 갱신
 ```
 
-### 재생 → 지도 동기화 흐름
+### 브이로그/체크인 등록
+```
+사진·영상(또는 위치+메시지) → Storage 업로드(미디어) → Firestore vlogs/{id} 저장
+  → 친구 피드·지도에 실시간 노출
+```
 
+### 알림(FCM)
 ```
-브이로그 선택
-    │
-    ▼
-Firestore에서 GPS 트랙 데이터 로드
-    │
-    ▼
-video_player로 영상 재생 시작
-    │
-    ▼
-현재 타임코드 → GPS 좌표 인덱스 변환 (보간법 적용)
-    │
-    ▼
-google_maps_flutter 마커 실시간 업데이트
-    │
-    ▼
-Places API로 현재 위치 장소 정보 팝업 표시
+ping/friend/comment 문서 생성 → Cloud Functions 트리거
+  → 수신자 fcmTokens 조회 → FCM 멀티캐스트 → 기기 푸시(웹은 SW가 표시)
 ```
+
+---
+
+## 웹 캐시 / OTA 갱신 전략
+
+* `--pwa-strategy=none` 으로 빌드하여 Flutter SW를 생성하지 않음.
+* 레거시 SW는 `tools/killswitch_sw.js`(자폭 SW)를 `flutter_service_worker.js` 자리에 배포해 캐시를 정리.
+* 실행 중 앱은 `version.json` 을 주기적으로 폴링 → `build` 가 올라가면 갱신 배너 표시.
+* FCM 웹 푸시는 `web/firebase-messaging-sw.js` 가 담당 (killswitch SW와 별개 파일).
 
 ---
 
@@ -131,21 +99,20 @@ Places API로 현재 위치 장소 정보 팝업 표시
 
 | 구분 | 플랫폼 | 방식 |
 |------|--------|------|
-| Flutter Web | Vercel | GitHub 푸시 → 자동 배포 (CI/CD) |
-| Android | Google Play Store | flutter build appbundle |
-| iOS | App Store | flutter build ipa |
-| 백엔드 API | AWS EC2 / NCP | PM2 + Nginx |
+| Web | Firebase Hosting | `firebase deploy --only hosting` |
+| Android | APK 베타 (`web/downloads/pinflick.apk`) | `flutter build apk` 후 복사·배포 |
+| Functions | Cloud Functions | `firebase deploy --only functions` |
+| Rules/Index | Firestore | `firebase deploy --only firestore` |
 
 ---
 
 ## 보안 고려사항
 
-- API 키는 `.env`로 관리, `.gitignore` 필수 적용
-- Firebase Security Rules로 Firestore 접근 제어
-- AWS S3 버킷 퍼블릭 차단, CloudFront 서명 URL 사용
-- HTTPS 통신 강제 (HTTP 리다이렉트)
-- GPS 데이터는 항상 null 체크 후 처리
+* Firestore Security Rules로 접근 제어 (예: `saves` 는 `uid` 필드 기반 인가).
+* API 키는 `.env`/Firebase 콘솔 관리, 하드코딩 금지.
+* FCM 발송은 신뢰된 서버(Cloud Functions)에서만.
+* 위치 데이터는 프라이버시 모드(베프/부끄럼/잠수)로 사용자가 공개 수준 직접 제어.
 
 ---
 
-*최종 수정: 2026-04-15*
+*최종 수정: 2026-06 (PinFlick 기준)*

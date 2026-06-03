@@ -1,3 +1,9 @@
+> # ⚠️ 폐기된 문서 (참고용)
+> PinFlick은 **별도 REST API 서버(Node.js/Express)를 사용하지 않습니다.**
+> 클라이언트가 Firebase SDK로 Firestore·Auth·Storage에 직접 접근하고,
+> 서버 로직은 Cloud Functions(FCM 발송·만료 정리)로만 존재합니다.
+> → 데이터 구조: `05_db_schema.md` · 서버 로직: `functions/index.js` · 개요: `01_system_architecture.md`
+
 # 04. API 명세
 
 ## 개요
