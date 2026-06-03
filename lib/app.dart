@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/user_status.dart';
 import 'models/vlog.dart';
@@ -26,6 +27,7 @@ import 'services/app_update_service.dart';
 import 'utils/sheets.dart';
 import 'widgets/new_version_banner.dart';
 import 'widgets/check_in_sheet.dart';
+import 'widgets/first_run_coachmarks.dart';
 import 'widgets/notifications_sheet.dart';
 import 'widgets/pulsing_fab.dart';
 import 'widgets/update_prompt_sheet.dart';
@@ -133,6 +135,12 @@ class _MainShellState extends State<MainShell> {
   // ── 웹 캐시 자동 갱신 감지 ─────────────────────────────────────────────
   WebVersionCheckService? _versionCheck;
 
+  // ── 첫 로그인 코치마크 ────────────────────────────────────────────────────
+  final GlobalKey _navBarKey = GlobalKey();
+  final GlobalKey _fabKey = GlobalKey();
+  final GlobalKey _mapTabKey = GlobalKey();
+  bool _coachmarksShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -155,6 +163,73 @@ class _MainShellState extends State<MainShell> {
     _subscribeGlobalPings();
     _checkForAppUpdate();
     _startWebVersionCheck();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeShowCoachmarks());
+  }
+
+  /// 위젯의 화면상 사각형 영역 (글로벌 좌표)
+  Rect? _rectOf(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    final offset = box.localToGlobal(Offset.zero);
+    return offset & box.size;
+  }
+
+  /// 첫 로그인 사용자에게 3단계 사용 가이드 표시 (1회성)
+  Future<void> _maybeShowCoachmarks() async {
+    if (_coachmarksShown) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) return; // 로그인 후에만
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('coachmarks_done_v1') ?? false) {
+      _coachmarksShown = true;
+      return;
+    }
+    // 레이아웃 안정화 대기 (탭바·FAB 렌더 완료)
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted || _coachmarksShown) return;
+
+    final navRect = _rectOf(_navBarKey);
+    final fabRect = _rectOf(_fabKey);
+    final mapRect = _rectOf(_mapTabKey);
+    if (navRect == null || fabRect == null) return; // 안전장치
+
+    _coachmarksShown = true;
+    FirstRunCoachmarks.show(
+      context,
+      steps: [
+        CoachStep(
+          target: navRect,
+          radius: 18,
+          emoji: '🧭',
+          title: '하단 메뉴로 한눈에',
+          body: '홈 피드 · 친구 지도 · 갤러리 · 친구를\n'
+              '아래 탭으로 자유롭게 오가요.',
+        ),
+        CoachStep(
+          target: fabRect,
+          radius: 40,
+          emoji: '➕',
+          title: '가운데 버튼으로 기록',
+          body: '➕ 를 누르면 사진·영상 브이로그를 올리고,\n'
+              '길게 누르면 지금 위치로 빠른 체크인!',
+        ),
+        CoachStep(
+          target: mapRect,
+          radius: 18,
+          emoji: '🔒',
+          title: '내 위치, 내가 정해요',
+          body: '친구 지도에선 공개 범위를 친구마다 골라요.\n'
+              '베프(정확)·부끄럼(대략)·잠수(숨김) — '
+              '원치 않으면 잠수로 가려서 안심!',
+        ),
+      ],
+      onDone: () {
+        prefs.setBool('coachmarks_done_v1', true);
+      },
+    );
   }
 
   /// 웹 캐시 자동 갱신 — 새 빌드 배포 감지 시 상단 배너 표시
@@ -312,6 +387,7 @@ class _MainShellState extends State<MainShell> {
     // ping 구독 갱신 — 로그인 시 새로 구독, 로그아웃 시 해제
     if (loggedIn) {
       _resubscribePings();
+      _maybeShowCoachmarks(); // 로그인 직후 첫 가이드
     } else {
       _pingsSub?.cancel();
       _pingsSub = null;
@@ -380,6 +456,13 @@ class _MainShellState extends State<MainShell> {
 
   // ── 중앙 FAB (브이로그 등록 마법사) — 롱프레스 = 체크인 ─────────────
   Widget _buildFab() {
+    return KeyedSubtree(
+      key: _fabKey,
+      child: _buildFabInner(),
+    );
+  }
+
+  Widget _buildFabInner() {
     return PulsingFab(
       isSelected: false, // 마법사는 push 라우트라서 탭 인디케이터 사용 안 함
       onTap: () {
@@ -403,7 +486,8 @@ class _MainShellState extends State<MainShell> {
   ];
 
   // ── 하단 탭 아이템 (라벨 없음, 컬러 아이콘 + 점 인디케이터) ──────────
-  Widget _buildNavItem(int index, IconData outlined, IconData filled) {
+  Widget _buildNavItem(int index, IconData outlined, IconData filled,
+      {Key? itemKey}) {
     final isSelected = _currentIndex == index;
     final activeColor = _navColors[index];
     // 다크모드 대응: 비활성 색상을 Theme의 outline으로
@@ -412,6 +496,7 @@ class _MainShellState extends State<MainShell> {
         : Theme.of(context).colorScheme.outline;
 
     return InkWell(
+      key: itemKey,
       onTap: () => _onTabTap(index),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
@@ -459,12 +544,14 @@ class _MainShellState extends State<MainShell> {
           elevation: 8,
           shadowColor: Colors.black26,
           child: SizedBox(
+            key: _navBarKey,
             height: 56,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.home_outlined, Icons.home),
-                _buildNavItem(1, Icons.groups_outlined, Icons.groups),
+                _buildNavItem(1, Icons.groups_outlined, Icons.groups,
+                    itemKey: _mapTabKey),
                 const SizedBox(width: 56), // FAB 공간
                 _buildNavItem(
                     3, Icons.photo_library_outlined, Icons.photo_library),
