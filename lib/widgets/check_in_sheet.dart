@@ -43,6 +43,7 @@ class _CheckInViewState extends State<_CheckInView> {
   final _msgCtrl = TextEditingController();
   String _emoji = '📍';
   VisibilitySelection _vis = VisibilitySelection.public;
+  String _expiry = '6시간'; // 지도 표시·자동삭제 기준 시간
   bool _emojiManuallyPicked = false; // 사용자가 직접 고른 후엔 자동 추천 중단
   Position? _position;
   String? _address;
@@ -111,6 +112,24 @@ class _CheckInViewState extends State<_CheckInView> {
     }
   }
 
+  static const _expiryOptions = ['1시간', '6시간', '오늘 종료', '24시간'];
+
+  /// 선택된 표시 시간 → 만료 시각 계산
+  DateTime _computeExpiry() {
+    final now = DateTime.now();
+    switch (_expiry) {
+      case '1시간':
+        return now.add(const Duration(hours: 1));
+      case '오늘 종료':
+        return DateTime(now.year, now.month, now.day, 23, 59, 59);
+      case '24시간':
+        return now.add(const Duration(hours: 24));
+      case '6시간':
+      default:
+        return now.add(const Duration(hours: 6));
+    }
+  }
+
   Future<void> _save() async {
     final user = FirebaseAuth.instance.currentUser;
     final pos = _position;
@@ -144,6 +163,7 @@ class _CheckInViewState extends State<_CheckInView> {
         address: _address,
         markerEmoji: _emoji,
         isCheckIn: true,
+        expiresAt: _computeExpiry(),
         visibility: _vis.visibility,
         visibleGroupIds: _vis.groupIds,
         visibleUids: _vis.visibleUids,
@@ -415,7 +435,71 @@ class _CheckInViewState extends State<_CheckInView> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            // 표시 시간(만료) 선택
+            Row(
+              children: [
+                const Icon(Icons.timer_outlined,
+                    size: 15, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                const Text('지도 표시 시간',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textSecondary)),
+                const Spacer(),
+                Text(
+                  '이 시간이 지나면 자동으로 사라져요',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textDisabled,
+                      fontStyle: FontStyle.italic),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: _expiryOptions.map((opt) {
+                final selected = _expiry == opt;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _expiry = opt);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.primary.withValues(alpha: 0.12)
+                            : Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: selected
+                            ? Border.all(
+                                color: AppColors.primary, width: 1.5)
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        opt,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600,
+                          color: selected
+                              ? AppColors.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
             // 공개 범위 선택 칩
             Row(
               children: [

@@ -64,6 +64,9 @@ class Vlog {
   final String? address;        // 역지오코딩 주소 (예: 서울특별시 동작구 사당동 127)
   final List<String> photoUrls; // 멀티 사진 URL 목록 (단사진·영상은 빈 리스트)
   final bool isCheckIn; // 체크인 (미디어 없이 위치+이모지+메시지만)
+  /// 체크인 만료 시각 — 이 시각 이후 지도 마커에서 숨김 + 서버가 자동 삭제.
+  /// 일반 vlog 는 null (만료 없음).
+  final DateTime? expiresAt;
 
   // ── 공개 범위 (per-post visibility) ───────────────────────────────────
   final VlogVisibility visibility;
@@ -95,10 +98,19 @@ class Vlog {
     this.address,
     this.photoUrls = const [],
     this.isCheckIn = false,
+    this.expiresAt,
     this.visibility = VlogVisibility.public,
     this.visibleGroupIds = const [],
     this.visibleUids = const [],
   });
+
+  /// 체크인 만료 여부 — expiresAt 있으면 그 기준, 없으면 createdAt+6시간 fallback.
+  /// 일반 vlog(체크인 아님)는 항상 false.
+  bool get isCheckInExpired {
+    if (!isCheckIn) return false;
+    final exp = expiresAt ?? createdAt.add(const Duration(hours: 6));
+    return DateTime.now().isAfter(exp);
+  }
 
   bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
   bool get hasGpsTrack => gpsTrack.isNotEmpty;

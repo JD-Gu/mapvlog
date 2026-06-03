@@ -20,6 +20,7 @@ import '../../services/friend_group_service.dart';
 import '../../services/friend_service.dart';
 import '../../services/user_status_service.dart';
 import '../../utils/constants.dart';
+import '../../widgets/comments_sheet.dart';
 
 const _defaultCenter = LatLng(37.5665, 126.9780); // 서울 시청
 
@@ -159,7 +160,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     _startBatteryMonitor();
   }
 
-  /// 친구들의 최근 6시간 체크인 vlog 구독 (재구독 = 친구 목록 바뀔 때마다)
+  /// 친구·내 체크인 vlog 구독 (만료 전까지 표시, 재구독 = 친구 목록 바뀔 때마다)
   void _resubscribeRecentCheckIns(String myUid) {
     _recentCheckInsSub?.cancel();
     final uids = _friendUids.toList();
@@ -172,13 +173,9 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       myUid: myUid,
       limit: 100,
     ).listen((vlogs) {
-      final cutoff = DateTime.now().subtract(const Duration(hours: 6));
-      _recentCheckIns = vlogs
-          .where((v) =>
-              v.isCheckIn &&
-              v.authorId != myUid && // 내 체크인은 제외
-              v.createdAt.isAfter(cutoff))
-          .toList();
+      // 만료 시각(expiresAt) 이내의 체크인만 표시 — 내 체크인도 포함
+      _recentCheckIns =
+          vlogs.where((v) => v.isCheckIn && !v.isCheckInExpired).toList();
       _rebuildMarkers();
     });
   }
@@ -336,6 +333,23 @@ class _LiveMapScreenState extends State<LiveMapScreen>
                   ],
                 ),
               ],
+              const SizedBox(height: 18),
+              // 댓글 — 시트 닫고 댓글 시트 열기
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  CommentsSheet.open(context, v);
+                },
+                icon: const Icon(Icons.mode_comment_outlined, size: 18),
+                label: Text(
+                  v.commentCount > 0 ? '댓글 ${v.commentCount}개' : '댓글 달기',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 46),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md)),
+                ),
+              ),
             ],
           ),
         );
@@ -593,7 +607,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       }
 
       final photo = await _loadUserPhoto(u.photoUrl);
-      final icon = await _avatarMarkerBitmap(
+      final marker = await _avatarMarkerBitmap(
         name: u.displayName,
         emoji: u.status?.emoji,
         privacyMode: u.privacyMode,
@@ -606,15 +620,15 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       markers.add(Marker(
         markerId: MarkerId(u.uid),
         position: position,
-        icon: icon,
-        anchor: const Offset(0.5, 1.0),
+        icon: marker.icon,
+        anchor: Offset(0.5, marker.anchorY),
         onTap: () {
           HapticFeedback.selectionClick();
           _showUserSheet(u);
         },
       ));
     }
-    // 친구들의 최근 6시간 체크인 자동 표시 (작은 이모지 마커)
+    // 체크인 자동 표시 (만료 전까지, 작은 이모지 마커 — 내 체크인 포함)
     for (final v in _recentCheckIns) {
       // 그룹 필터 활성 시 비멤버 친구의 체크인은 숨김
       if (filterUids != null && !filterUids.contains(v.authorId)) continue;
@@ -988,7 +1002,10 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     Color(0xFFEC407A),
   ];
 
-  Future<BitmapDescriptor> _avatarMarkerBitmap({
+  /// 아바타 마커 비트맵 + 앵커 Y 반환.
+  /// anchorY 는 "꼬리 꼭지점"의 세로 비율 → Marker.anchor 에 적용하면
+  /// 꼭지점이 GPS 좌표에 정확히 위치하고 라벨은 그 아래로 매달림.
+  Future<({BitmapDescriptor icon, double anchorY})> _avatarMarkerBitmap({
     required String name,
     String? emoji,
     required PrivacyMode privacyMode,
@@ -1306,10 +1323,14 @@ class _LiveMapScreenState extends State<LiveMapScreen>
 
     final img = await recorder.endRecording().toImage(totalW, totalH);
     final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(
+    final icon = BitmapDescriptor.bytes(
       data!.buffer.asUint8List(),
       imagePixelRatio: r,
     );
+    // 꼬리 꼭지점의 세로 위치 비율 (이 지점이 GPS 좌표에 오도록)
+    final tailTipY = avatarBottom + tailH;
+    final anchorY = (tailTipY / totalH).clamp(0.0, 1.0);
+    return (icon: icon, anchorY: anchorY);
   }
 }
 

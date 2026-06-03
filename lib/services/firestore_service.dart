@@ -175,6 +175,7 @@ class FirestoreService {
     String? address,
     List<String> photoUrls = const [],
     bool isCheckIn = false,
+    DateTime? expiresAt,
     VlogVisibility visibility = VlogVisibility.public,
     List<String> visibleGroupIds = const [],
     List<String> visibleUids = const [],
@@ -201,6 +202,7 @@ class FirestoreService {
       if (address != null && address.isNotEmpty) 'address': address,
       if (photoUrls.isNotEmpty) 'photoUrls': photoUrls,
       if (isCheckIn) 'isCheckIn': true,
+      if (expiresAt != null) 'expiresAt': Timestamp.fromDate(expiresAt),
       // 공개 범위 (per-post)
       'visibility': visibility.value,
       if (visibleGroupIds.isNotEmpty) 'visibleGroupIds': visibleGroupIds,
@@ -694,6 +696,7 @@ class FirestoreService {
               .toList() ??
           [],
       isCheckIn: d['isCheckIn'] as bool? ?? false,
+      expiresAt: (d['expiresAt'] as Timestamp?)?.toDate(),
       visibility: VlogVisibility.fromValue(d['visibility'] as String?),
       visibleGroupIds: (d['visibleGroupIds'] as List<dynamic>?)
               ?.map((e) => e as String)

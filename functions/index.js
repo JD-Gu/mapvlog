@@ -12,6 +12,7 @@
  */
 
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -174,5 +175,35 @@ exports.onCommentCreated = onDocumentCreated(
         emoji: "💬",
         vlogId,
       })));
+    },
+);
+
+// ── 4) 만료된 체크인 자동 삭제 (매시간) ──────────────────────────────────────
+// expiresAt 이 지난 체크인 vlog 를 하위 댓글·좋아요·저장과 함께 삭제.
+exports.cleanupExpiredCheckins = onSchedule(
+    "every 60 minutes",
+    async () => {
+      const now = admin.firestore.Timestamp.now();
+      const snap = await db
+          .collection("vlogs")
+          .where("isCheckIn", "==", true)
+          .where("expiresAt", "<", now)
+          .limit(400)
+          .get();
+      if (snap.empty) {
+        logger.info("cleanupExpiredCheckins: 만료 체크인 없음");
+        return;
+      }
+      let n = 0;
+      for (const doc of snap.docs) {
+        try {
+          // recursiveDelete: 하위 comments/likes/saves 까지 정리
+          await db.recursiveDelete(doc.ref);
+          n++;
+        } catch (e) {
+          logger.error("recursiveDelete 실패 " + doc.id, e);
+        }
+      }
+      logger.info("cleanupExpiredCheckins 삭제=" + n);
     },
 );
