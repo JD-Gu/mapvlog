@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../utils/marker_emojis.dart';
+import 'map_picker_sheet.dart';
 import 'visibility_picker.dart';
 
 /// 빠른 체크인 시트 — 이모지 + 한 줄 메시지 + 현재 GPS를 즉시 vlog로 저장
@@ -128,6 +130,44 @@ class _CheckInViewState extends State<_CheckInView> {
       default:
         return now.add(const Duration(hours: 6));
     }
+  }
+
+  /// 현재 위치 다시 가져오기
+  Future<void> _refreshLocation() async {
+    if (_locating) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _locating = true;
+      _address = null;
+      _error = null;
+    });
+    await _fetchLocation();
+  }
+
+  /// 지도에서 위치 직접 선택
+  Future<void> _pickOnMap() async {
+    final start = _position != null
+        ? LatLng(_position!.latitude, _position!.longitude)
+        : const LatLng(37.5665, 126.9780);
+    final picked = await MapPickerSheet.open(context, initial: start);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _position = Position(
+        latitude: picked.latitude,
+        longitude: picked.longitude,
+        timestamp: DateTime.now(),
+        accuracy: 0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+      _address = null;
+      _error = null;
+    });
+    _reverseGeocode(_position!);
   }
 
   Future<void> _save() async {
@@ -434,6 +474,27 @@ class _CheckInViewState extends State<_CheckInView> {
                   ],
                 ],
               ),
+            ),
+            const SizedBox(height: 10),
+            // 위치 보정 — 새로고침 / 지도에서 선택 (마법사와 동일 UI)
+            Row(
+              children: [
+                Expanded(
+                  child: LocationActionButton(
+                    icon: Icons.my_location,
+                    label: '현재위치 새로고침',
+                    onTap: _refreshLocation,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: LocationActionButton(
+                    icon: Icons.map_outlined,
+                    label: '지도에서 선택',
+                    onTap: _pickOnMap,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             // 표시 시간(만료) 선택

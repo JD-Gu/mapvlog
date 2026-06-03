@@ -594,7 +594,9 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
         children: [
           _ActionIconButton(
             icon: _isLiked ? Icons.favorite : Icons.favorite_outline,
-            color: _isLiked ? AppColors.error : AppColors.textPrimary,
+            color: _isLiked
+                ? AppColors.error
+                : Theme.of(context).colorScheme.onSurface,
             onTap: _toggleLike,
           ),
           const SizedBox(width: 2),

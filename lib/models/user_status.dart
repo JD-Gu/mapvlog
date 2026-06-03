@@ -166,11 +166,21 @@ class Ping {
 class PingPresets {
   static const List<({String emoji, String message})> presets = [
     (emoji: '👋', message: '어디야?'),
+    (emoji: '🏃', message: '빨리 와!'),
     (emoji: '🤝', message: '만나자!'),
     (emoji: '📞', message: '전화해줘'),
+    (emoji: '💬', message: '톡 봐줘'),
     (emoji: '❤️', message: '보고싶어'),
     (emoji: '🍻', message: '한잔 콜?'),
     (emoji: '🍚', message: '밥 먹자'),
+    (emoji: '☕', message: '커피 한잔?'),
+    (emoji: '🎮', message: '게임 ㄱ?'),
+    (emoji: '🚗', message: '데리러 와'),
+    (emoji: '🛍️', message: '같이 쇼핑'),
+    (emoji: '🎉', message: '축하해!'),
+    (emoji: '🆘', message: '도와줘!'),
+    (emoji: '😴', message: '자?'),
+    (emoji: '🤔', message: '뭐해?'),
   ];
 }
 

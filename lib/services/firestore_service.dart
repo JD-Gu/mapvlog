@@ -255,12 +255,15 @@ class FirestoreService {
   /// 토글: vlogs/{vlogId}/saves/{userId} doc 생성/삭제
   /// 좋아요와 별개 — 본인만 보는 개인 컬렉션
   static Future<void> toggleSave(String vlogId, String userId) async {
-    final ref = _vlogs.doc(vlogId).collection('saves').doc(userId);
-    final snap = await ref.get();
-    if (snap.exists) {
-      await ref.delete();
+    final col = _vlogs.doc(vlogId).collection('saves');
+    // 존재 확인은 단일 doc get 대신 uid 필드 쿼리로 (규칙이 필드 기반 인가라
+    // 없는 doc 을 get 하면 permission-denied 가 남)
+    final existing =
+        await col.where('uid', isEqualTo: userId).limit(1).get();
+    if (existing.docs.isNotEmpty) {
+      await col.doc(userId).delete();
     } else {
-      await ref.set({
+      await col.doc(userId).set({
         'uid': userId,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -268,12 +271,13 @@ class FirestoreService {
   }
 
   static Future<bool> isSaved(String vlogId, String userId) async {
-    final doc = await _vlogs
+    final snap = await _vlogs
         .doc(vlogId)
         .collection('saves')
-        .doc(userId)
+        .where('uid', isEqualTo: userId)
+        .limit(1)
         .get();
-    return doc.exists;
+    return snap.docs.isNotEmpty;
   }
 
   // ─── Like Users (vlog 좋아요한 사용자) ────────────────────────────────────

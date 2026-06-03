@@ -32,11 +32,15 @@ service cloud.firestore {
       }
 
       // ── saves 서브컬렉션 (즐겨찾기 — 본인만 read/write) ─────────────────
-      match /saves/{userId} {
+      // collectionGroup('saves').where('uid'==me) 쿼리를 허용하려면
+      // 문서ID(wildcard)가 아니라 쿼리가 거는 필드(uid)로 인가해야 함.
+      match /saves/{saveId} {
         allow read: if request.auth != null
-                    && request.auth.uid == userId;
-        allow create, delete: if request.auth != null
-                              && request.auth.uid == userId;
+                    && request.auth.uid == resource.data.uid;
+        allow create: if request.auth != null
+                      && request.auth.uid == request.resource.data.uid;
+        allow delete: if request.auth != null
+                      && request.auth.uid == resource.data.uid;
       }
 
       // ── reactions 서브컬렉션 (Slack 스타일 이모지 리액션) ──────────────

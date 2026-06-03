@@ -884,9 +884,11 @@ class _SavedVlogsSheetState extends State<_SavedVlogsSheet> {
                             textAlign: TextAlign.center,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 11,
-                                color: AppColors.textSecondary),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -905,25 +907,26 @@ class _SavedVlogsSheetState extends State<_SavedVlogsSheet> {
                             _filter;
                       }).toList();
                 if (all.isEmpty) {
-                  return const Center(
+                  final cs = Theme.of(context).colorScheme;
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(AppSpacing.xl),
+                      padding: const EdgeInsets.all(AppSpacing.xl),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.bookmark_border,
-                              size: 40, color: AppColors.textDisabled),
-                          SizedBox(height: 10),
-                          Text('아직 저장한 브이로그가 없어요',
+                              size: 40, color: cs.outline),
+                          const SizedBox(height: 10),
+                          const Text('아직 저장한 브이로그가 없어요',
                               style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600)),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             '브이로그 재생 화면에서 🔖 저장 버튼을 눌러보세요',
                             style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.textSecondary),
+                                color: cs.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -931,12 +934,12 @@ class _SavedVlogsSheetState extends State<_SavedVlogsSheet> {
                   );
                 }
                 if (vlogs.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       '이 카테고리에 저장한 브이로그가 없어요',
                       style: TextStyle(
                           fontSize: 13,
-                          color: AppColors.textSecondary),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   );
                 }
@@ -1014,7 +1017,9 @@ class _SavedFilterChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
