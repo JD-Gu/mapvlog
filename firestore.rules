@@ -31,18 +31,6 @@ service cloud.firestore {
                               && request.auth.uid == userId;
       }
 
-      // ── saves 서브컬렉션 (즐겨찾기 — 본인만 read/write) ─────────────────
-      // collectionGroup('saves').where('uid'==me) 쿼리를 허용하려면
-      // 문서ID(wildcard)가 아니라 쿼리가 거는 필드(uid)로 인가해야 함.
-      match /saves/{saveId} {
-        allow read: if request.auth != null
-                    && request.auth.uid == resource.data.uid;
-        allow create: if request.auth != null
-                      && request.auth.uid == request.resource.data.uid;
-        allow delete: if request.auth != null
-                      && request.auth.uid == resource.data.uid;
-      }
-
       // ── reactions 서브컬렉션 (Slack 스타일 이모지 리액션) ──────────────
       // docId = {userId}_{emoji} 형태 — 한 사용자가 여러 이모지로 리액션 가능
       match /reactions/{reactionId} {
@@ -80,6 +68,19 @@ service cloud.firestore {
                                 && request.auth.uid == userId;
         }
       }
+    }
+
+    // ── saves 컬렉션그룹 (즐겨찾기 북마크) ────────────────────────────────────
+    // ⚠️ collectionGroup('saves').where('uid'==me) 쿼리를 허용하려면 경로 한정
+    //    (/vlogs/{id}/saves/...) 규칙으로는 안 되고, 반드시 재귀 와일드카드
+    //    (/{path=**}/saves/...) 규칙이어야 한다. 인가는 쿼리가 거는 uid 필드 기준.
+    match /{path=**}/saves/{saveId} {
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null
+                    && request.auth.uid == resource.data.uid;
     }
 
     // ── config 컬렉션 (앱 설정 — 신규 버전 정보 등) ──────────────────────────
