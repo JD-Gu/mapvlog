@@ -2292,6 +2292,7 @@ class _UserDetailSheet extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
+                                    color: Color(0xFF4E342E), // 앰버 배경 위 진한 갈색
                                   ),
                                 ),
                               ],
@@ -2406,13 +2407,14 @@ class _UserDetailSheet extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
+                                    color: Color(0xFF3E2723), // 크림 배경 위 진한 갈색
                                   ),
                                 ),
                                 Text(
                                   _pingTime(p.createdAt),
                                   style: const TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.textSecondary,
+                                    color: Color(0xFF6D4C41), // 진한 갈색(가독성)
                                   ),
                                 ),
                               ],
@@ -2493,6 +2495,7 @@ class _UserDetailSheet extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
+                                color: Color(0xFF4E342E), // 앰버 배경 위 진한 갈색
                               ),
                             ),
                           ],
