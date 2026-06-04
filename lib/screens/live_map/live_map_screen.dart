@@ -202,19 +202,52 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     });
   }
 
-  /// 체크인 마커용 작은 이모지 버블 비트맵
-  /// — 흰 원 + 컬러 링 + 중앙 이모지
-  Future<BitmapDescriptor> _checkInMarkerBitmap(String emoji) async {
+  /// 체크인 마커용 이모지 버블 비트맵 (+ 선택적 라벨: 남은시간·거리)
+  /// — 흰 원 + 컬러 링 + 중앙 이모지, 그 아래 라벨. anchorY 는 버블 중심 비율.
+  Future<({BitmapDescriptor icon, double anchorY})> _checkInMarkerBitmap(
+      String emoji,
+      {String? subtitle}) async {
     final r = _pixelRatio;
-    final radius = 13.0 * r;
-    final size = (radius * 2 + 6 * r).ceil();
+    final radius = 16.0 * r; // 13 → 16 (조금 키움)
+    final pad = 6.0 * r; // 그림자 여백
+    final bubbleD = radius * 2;
+
+    // 라벨 (남은시간 · 거리)
+    TextPainter? labelPainter;
+    double labelW = 0, labelH = 0;
+    const labelGap = 0.0;
+    final gap = 4.0 * r;
+    final labelPadH = 7.0 * r;
+    final labelPadV = 3.0 * r;
+    if (subtitle != null && subtitle.isNotEmpty) {
+      labelPainter = TextPainter(textDirection: TextDirection.ltr)
+        ..text = TextSpan(
+            text: subtitle,
+            style: TextStyle(
+              fontSize: 10.5 * r,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF202124),
+              letterSpacing: -0.2 * r,
+            ))
+        ..layout();
+      labelW = labelPainter.width + labelPadH * 2;
+      labelH = labelPainter.height + labelPadV * 2;
+    }
+
+    final bubbleBlockW = bubbleD + pad * 2;
+    final totalW = math.max(bubbleBlockW, labelW).ceil();
+    final hasLabel = labelPainter != null;
+    final totalH =
+        (pad + bubbleD + (hasLabel ? gap + labelH : 0) + pad).ceil();
+    final cx = totalW / 2.0;
+    final bubbleCY = pad + radius;
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final cx = size / 2.0;
-    final cy = size / 2.0;
+
     // 그림자
     canvas.drawCircle(
-      Offset(cx, cy + 2 * r),
+      Offset(cx, bubbleCY + 2 * r),
       radius,
       Paint()
         ..color = Colors.black.withAlpha(80)
@@ -222,31 +255,44 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     );
     // 파란 링
     canvas.drawCircle(
-      Offset(cx, cy),
-      radius,
-      Paint()..color = const Color(0xFF1A73E8),
-    );
+        Offset(cx, bubbleCY), radius, Paint()..color = const Color(0xFF1A73E8));
     // 흰 내부
     canvas.drawCircle(
-      Offset(cx, cy),
-      radius - 2 * r,
-      Paint()..color = Colors.white,
-    );
+        Offset(cx, bubbleCY), radius - 2 * r, Paint()..color = Colors.white);
     // 이모지
     final emojiPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(text: emoji, style: TextStyle(fontSize: 14 * r))
+      ..text = TextSpan(text: emoji, style: TextStyle(fontSize: 17 * r))
       ..layout();
-    emojiPainter.paint(
-      canvas,
-      Offset(cx - emojiPainter.width / 2, cy - emojiPainter.height / 2),
-    );
+    emojiPainter.paint(canvas,
+        Offset(cx - emojiPainter.width / 2, bubbleCY - emojiPainter.height / 2));
+
+    // 라벨 (흰 배경 알약 + 텍스트)
+    if (hasLabel) {
+      final labelX = cx - labelW / 2;
+      final labelY = pad + bubbleD + gap + labelGap;
+      final rrect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(labelX, labelY, labelW, labelH),
+        Radius.circular(labelH / 2),
+      );
+      canvas.drawRRect(
+        rrect.shift(Offset(0, 1 * r)),
+        Paint()
+          ..color = Colors.black.withAlpha(45)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3 * r),
+      );
+      canvas.drawRRect(rrect, Paint()..color = Colors.white);
+      labelPainter.paint(canvas, Offset(labelX + labelPadH, labelY + labelPadV));
+    }
+
     final picture = recorder.endRecording();
-    final image = await picture.toImage(size, size);
+    final image = await picture.toImage(totalW, totalH);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // imagePixelRatio 지정 — 고해상도 비트맵을 논리 크기로 다운스케일(너무 큰 문제 해결)
-    return BitmapDescriptor.bytes(
-      bytes!.buffer.asUint8List(),
-      imagePixelRatio: r,
+    return (
+      icon: BitmapDescriptor.bytes(
+        bytes!.buffer.asUint8List(),
+        imagePixelRatio: r,
+      ),
+      anchorY: bubbleCY / totalH,
     );
   }
 
@@ -515,6 +561,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         photo: photo,
         updatedAt: u.location?.updatedAt,
         pingCount: isMe ? _myPings.length : 0,
+        // 친구까지 거리 (표시 위치 기준 — 부끄럼/안개는 마스킹된 위치로 계산)
+        distanceText:
+            isMe ? null : _distanceTo(position.latitude, position.longitude),
       );
       markers.add(Marker(
         markerId: MarkerId(u.uid),
@@ -542,12 +591,17 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
           !filterUids.contains(v.authorId)) {
         continue;
       }
-      final icon = await _checkInMarkerBitmap(v.markerEmoji ?? '📍');
+      // 라벨: 남은시간 · 거리
+      final remaining = _checkInRemaining(v);
+      final dist = _distanceTo(v.lat, v.lng);
+      final subtitle = dist != null ? '$remaining · $dist' : remaining;
+      final ci = await _checkInMarkerBitmap(v.markerEmoji ?? '📍',
+          subtitle: subtitle);
       markers.add(Marker(
         markerId: MarkerId('checkin_${v.id}'),
         position: LatLng(v.lat, v.lng),
-        icon: icon,
-        anchor: const Offset(0.5, 0.5),
+        icon: ci.icon,
+        anchor: Offset(0.5, ci.anchorY),
         zIndexInt: isFocus ? 100 : 50,
         onTap: () => _showCheckInSheet(v),
       ));
@@ -893,6 +947,35 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     return '오래전';
   }
 
+  /// 내 현재 위치 (거리 계산용) — 실제 GPS 우선, 없으면 내 doc 위치
+  ({double lat, double lng})? _myLatLng() {
+    final p = LocationTrackingService.instance.lastPosition;
+    if (p != null) return (lat: p.latitude, lng: p.longitude);
+    final loc = _me?.location;
+    if (loc != null) return (lat: loc.lat, lng: loc.lng);
+    return null;
+  }
+
+  /// 내 위치 → 대상 좌표 거리 문자열 ("320m" / "1.2km"). 내 위치 없으면 null.
+  String? _distanceTo(double lat, double lng) {
+    final me = _myLatLng();
+    if (me == null) return null;
+    final meters = Geolocator.distanceBetween(me.lat, me.lng, lat, lng);
+    if (meters < 1000) return '${meters.round()}m';
+    final km = meters / 1000;
+    return '${km.toStringAsFixed(km < 10 ? 1 : 0)}km';
+  }
+
+  /// 체크인 남은 시간 ("2시간 남음" / "45분 남음" / "곧 만료").
+  String _checkInRemaining(Vlog v) {
+    final exp = v.expiresAt ?? v.createdAt.add(const Duration(hours: 6));
+    final diff = exp.difference(DateTime.now());
+    if (diff.inMinutes < 1) return '곧 만료';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 남음';
+    if (diff.inHours < 24) return '${diff.inHours}시간 남음';
+    return '${diff.inDays}일 남음';
+  }
+
   static const _avatarColors = [
     Color(0xFF1A73E8),
     Color(0xFF34A853),
@@ -915,6 +998,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     ui.Image? photo,
     DateTime? updatedAt,
     int pingCount = 0,
+    String? distanceText,
   }) async {
     final r = _pixelRatio; // 고해상도 렌더링용 배수
 
@@ -964,6 +1048,20 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                         ? const Color(0xFF34A853)
                         : const Color(0xFF5F6368),
                     fontWeight: FontWeight.w600)),
+          ],
+          if (distanceText != null) ...[
+            TextSpan(
+                text: '  ·  ',
+                style: TextStyle(
+                    fontSize: 10 * r,
+                    color: const Color(0xFFBDC1C6),
+                    fontWeight: FontWeight.w500)),
+            TextSpan(
+                text: distanceText,
+                style: TextStyle(
+                    fontSize: 10.5 * r,
+                    color: const Color(0xFF1A73E8),
+                    fontWeight: FontWeight.w700)),
           ],
         ],
       )
