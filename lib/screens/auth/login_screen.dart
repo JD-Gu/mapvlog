@@ -21,8 +21,11 @@ class LoginScreen extends StatelessWidget {
 
     if (auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pushReplacement(
+        // 스택 전체를 비우고 MainShell만 남김 — 로그인 필요 탭에서 push 로
+        // 진입한 경우 아래에 남는 MainShell(뒤로가기 버튼 원인) 제거
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const MainShell()),
+          (route) => false,
         );
       });
     }

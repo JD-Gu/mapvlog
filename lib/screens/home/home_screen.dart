@@ -414,6 +414,8 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── 앱바 ──────────────────────────────────────────────────────
             SliverAppBar(
               backgroundColor: Theme.of(context).colorScheme.surface,
+              // 홈은 탭 루트 — 아래에 라우트가 남아도 뒤로가기 버튼 표시 안 함
+              automaticallyImplyLeading: false,
               floating: true,
               snap: true,
               elevation: 0,

@@ -20,7 +20,9 @@ import 'visibility_picker.dart';
 /// 미디어 없이 위치만 기록. `Vlog.isCheckIn=true` 로 표시되어 피드/지도에서
 /// 다르게 렌더링 가능. 일반 vlog와 동일하게 좋아요·댓글 가능.
 class CheckInSheet {
-  static const _presetEmojis = ['📍', '🍕', '☕', '🍻', '🏃', '📚', '🚗', '🎉', '💼', '🏠'];
+  static const _presetEmojis = [
+    '📍', '💼', '🧳', '🏖️', '🍕', '☕', '🍻', '🏃', '📚', '🚗', '🎉', '🏠'
+  ];
 
   /// 새 체크인은 [editing] null, 기존 체크인 수정은 [editing] 에 해당 Vlog 전달.
   static Future<void> open(BuildContext context, {Vlog? editing}) async {
@@ -432,6 +434,7 @@ class _CheckInViewState extends State<_CheckInView> {
                 scrollDirection: Axis.horizontal,
                 children: [
                   for (final t in const [
+                    '근무중', '출장중', '휴가중',
                     '점심중', '저녁중', '카페', '회식', '운동중',
                     '공부중', '쇼핑중', '데이트', '여행중', '드라이브', '집'
                   ])
