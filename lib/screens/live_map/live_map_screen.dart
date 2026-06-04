@@ -486,30 +486,46 @@ class _LiveMapScreenState extends State<LiveMapScreen>
           return;
         }
       }
-      final pos = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.medium));
-      await UserStatusService.updateLocation(
-        uid: uid,
-        lat: pos.latitude,
-        lng: pos.longitude,
-        isMoving: _isMoving,
-        batteryLevel: _batteryLevel,
-      );
-      // 카메라 이동 (요청 시 1회만)
+      // ① 첫 진입 즉시 표시 — 마지막 위치를 먼저 반영 (콜드 GPS 대기 없이 바로
+      //    내 마커/카메라가 뜨도록). 웹은 미지원이라 null → 무시.
       if (moveCamera && !_didInitialCameraMove) {
-        final latlng = LatLng(pos.latitude, pos.longitude);
-        if (_mapController != null) {
-          _didInitialCameraMove = true;
-          await _mapController!.animateCamera(
-              CameraUpdate.newLatLngZoom(latlng, 15));
-        } else {
-          // 지도 준비 전 → pending에 저장
-          _pendingCameraLocation = latlng;
-        }
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) await _applyMyLocation(uid, last, moveCamera);
+        } catch (_) {}
       }
+      // ② 정확한 현재 위치로 갱신 (타임아웃으로 콜드 스타트 무한대기 방지)
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 12)),
+      );
+      await _applyMyLocation(uid, pos, moveCamera);
     } catch (_) {
-      // 위치 권한 없음·실패: 무시
+      // 위치 권한 없음·실패: 무시 (마지막 위치가 이미 반영됐으면 그게 표시됨)
+    }
+  }
+
+  /// 위치 1건을 내 doc 에 반영 + (요청 시 1회) 카메라 이동
+  Future<void> _applyMyLocation(
+      String uid, Position pos, bool moveCamera) async {
+    await UserStatusService.updateLocation(
+      uid: uid,
+      lat: pos.latitude,
+      lng: pos.longitude,
+      isMoving: _isMoving,
+      batteryLevel: _batteryLevel,
+    );
+    if (moveCamera && !_didInitialCameraMove) {
+      final latlng = LatLng(pos.latitude, pos.longitude);
+      if (_mapController != null) {
+        _didInitialCameraMove = true;
+        await _mapController!
+            .animateCamera(CameraUpdate.newLatLngZoom(latlng, 15));
+      } else {
+        // 지도 준비 전 → pending에 저장 (onMapCreated 에서 이동)
+        _pendingCameraLocation = latlng;
+      }
     }
   }
 
