@@ -1683,7 +1683,9 @@ class _GalleryCategoryChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],

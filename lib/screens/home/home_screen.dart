@@ -817,7 +817,7 @@ class _NotificationBell extends StatelessWidget {
                     : Icons.notifications_outlined,
                 color: count > 0
                     ? AppColors.primary
-                    : AppColors.textPrimary,
+                    : Theme.of(context).colorScheme.onSurface,
               ),
               onPressed: () => NotificationsSheet.open(context),
             ),

@@ -1381,7 +1381,9 @@ class _LiveControlBar extends StatelessWidget {
                           Color(0xFFFFE082),
                         ])
                       : null,
-                  color: status == null ? AppColors.surfaceVariant : null,
+                  color: status == null
+                      ? Theme.of(context).colorScheme.surfaceContainerHighest
+                      : null,
                   borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
                 child: Row(
@@ -1396,8 +1398,10 @@ class _LiveControlBar extends StatelessWidget {
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: status != null
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary,
+                              ? const Color(0xFF4E342E) // 앰버 배경 위 진한 갈색
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1464,7 +1468,8 @@ class _RoundIconButton extends StatelessWidget {
           width: 44,
           height: 44,
           child: Icon(icon,
-              color: color ?? AppColors.textPrimary, size: 22),
+              color: color ?? Theme.of(context).colorScheme.onSurface,
+              size: 22),
         ),
       ),
     );
@@ -1888,8 +1893,10 @@ class _StatusPickerSheetState extends State<_StatusPickerSheet> {
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: selected
-                                ? AppColors.textPrimary
-                                : AppColors.textSecondary,
+                                ? const Color(0xFF4E342E) // 앰버 선택 위 진한 갈색
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -2684,7 +2691,9 @@ class _GroupFilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? accent : AppColors.surface,
+          color: selected
+              ? accent
+              : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(AppRadius.full),
           boxShadow: [
             BoxShadow(
@@ -2704,7 +2713,9 @@ class _GroupFilterChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
             if (mode != null && !selected) ...[

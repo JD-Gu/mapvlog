@@ -851,7 +851,9 @@ class _UserCatChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : AppColors.textPrimary,
+                  color: selected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurface,
                 )),
           ],
         ),

@@ -1471,7 +1471,9 @@ class _CategoryFilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.surface,
+          color: selected
+              ? AppColors.primary
+              : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(AppRadius.full),
           boxShadow: [
             BoxShadow(
@@ -1491,7 +1493,9 @@ class _CategoryFilterChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
