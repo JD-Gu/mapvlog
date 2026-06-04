@@ -716,13 +716,40 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
         } else if (_wouldClusterAtMaxZoom(group)) {
           _showClusterList(group.vlogs);
         } else {
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(
-                group.center, math.min(_zoom + 2, 20)),
-          );
+          // 한 번에 클러스터 멤버 전체 영역으로 줌 → 즉시 분기
+          _fitToCluster(group);
         }
       },
     );
+  }
+
+  /// 클러스터 멤버 전체를 화면에 꽉 차게 줌 (한 번 탭으로 분기).
+  void _fitToCluster(_GalleryCluster group) {
+    final ctrl = _mapController;
+    if (ctrl == null) return;
+    double minLat = group.vlogs.first.lat, maxLat = minLat;
+    double minLng = group.vlogs.first.lng, maxLng = minLng;
+    for (final v in group.vlogs) {
+      minLat = math.min(minLat, v.lat);
+      maxLat = math.max(maxLat, v.lat);
+      minLng = math.min(minLng, v.lng);
+      maxLng = math.max(maxLng, v.lng);
+    }
+    // 너무 작은 범위는 약간 패딩(0 크기 bounds 방지)
+    const eps = 0.0004;
+    if ((maxLat - minLat).abs() < eps) {
+      minLat -= eps;
+      maxLat += eps;
+    }
+    if ((maxLng - minLng).abs() < eps) {
+      minLng -= eps;
+      maxLng += eps;
+    }
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+    ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 90));
   }
 
   bool _wouldClusterAtMaxZoom(_GalleryCluster group) {
