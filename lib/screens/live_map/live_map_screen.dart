@@ -186,7 +186,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   /// — 흰 원 + 컬러 링 + 중앙 이모지
   Future<BitmapDescriptor> _checkInMarkerBitmap(String emoji) async {
     final r = _pixelRatio;
-    final radius = 18.0 * r;
+    final radius = 13.0 * r;
     final size = (radius * 2 + 6 * r).ceil();
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -214,7 +214,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     );
     // 이모지
     final emojiPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(text: emoji, style: TextStyle(fontSize: 18 * r))
+      ..text = TextSpan(text: emoji, style: TextStyle(fontSize: 14 * r))
       ..layout();
     emojiPainter.paint(
       canvas,
@@ -223,7 +223,11 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     final picture = recorder.endRecording();
     final image = await picture.toImage(size, size);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    // imagePixelRatio 지정 — 고해상도 비트맵을 논리 크기로 다운스케일(너무 큰 문제 해결)
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: r,
+    );
   }
 
   /// 친구 체크인 상세 시트
@@ -596,15 +600,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
         final dx = ((seed % 1000) / 1000.0 - 0.5) * 0.005;
         final dy = (((seed >> 10) % 1000) / 1000.0 - 0.5) * 0.005;
         position = LatLng(position.latitude + dy, position.longitude + dx);
-        circles.add(Circle(
-          circleId: CircleId('shy_${u.uid}'),
-          center: position,
-          radius: 500,
-          fillColor: const Color(0xFFFFA726).withValues(alpha: 0.18),
-          strokeColor: const Color(0xFFFFA726),
-          strokeWidth: 2,
-        ));
-        // 안개 마커로 렌더링 (베프/불편과 같은 아바타 UI 유지)
+        // 500m 반경 원은 제거 — 위치 마스킹(오프셋) + 안개 후광으로 대략 위치 표현
         effective = FriendEffectiveMode.fog;
       }
 
