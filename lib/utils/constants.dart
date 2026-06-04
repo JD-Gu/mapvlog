@@ -54,8 +54,8 @@ const Color kPolylineColor = Color(0xFF1A73E8);
 const int kPolylineWidth = 4;
 
 // 앱 버전 — pubspec.yaml 의 version 필드와 동기화 유지 (수동)
-const String kAppVersion = '1.59.2';
-const String kAppBuildNumber = '91';
+const String kAppVersion = '1.59.3';
+const String kAppBuildNumber = '92';
 const String kAppChannel = 'beta'; // 'beta' | 'stable'
 
 // ── FCM 푸시 ────────────────────────────────────────────────────────────────

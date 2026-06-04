@@ -735,8 +735,8 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
       minLng = math.min(minLng, v.lng);
       maxLng = math.max(maxLng, v.lng);
     }
-    // 너무 작은 범위는 약간 패딩(0 크기 bounds 방지)
-    const eps = 0.0004;
+    // degenerate(0 크기) bounds만 방지 — 과도한 패딩은 줌인을 막으므로 최소값
+    const eps = 0.00003; // ≈3m
     if ((maxLat - minLat).abs() < eps) {
       minLat -= eps;
       maxLat += eps;
@@ -749,7 +749,8 @@ class _PhotoMapViewState extends State<_PhotoMapView> {
       southwest: LatLng(minLat, minLng),
       northeast: LatLng(maxLat, maxLng),
     );
-    ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 90));
+    // 패딩 작게 → 멤버 영역을 더 꽉 차게(더 깊이 줌) → 한 번에 분기
+    ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 48));
   }
 
   bool _wouldClusterAtMaxZoom(_GalleryCluster group) {
