@@ -118,10 +118,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Vlog> _sorted(List<Vlog> vlogs) {
-    // 카테고리 필터 먼저 적용
+    Iterable<Vlog> src = vlogs;
+
+    // 그룹 필터 활성 시 — 내 글은 "그 그룹에 공개한 글"만 노출.
+    // (친구 글은 watchFriendsVlogs 의 author 쿼리로 이미 그룹 멤버만 들어옴.
+    //  내 글은 항상 포함되므로 여기서 그룹 공개 여부로 한 번 더 거른다.)
+    if (_activeGroupId != null) {
+      final me = FirebaseAuth.instance.currentUser?.uid;
+      src = src.where((v) =>
+          v.authorId != me || v.visibleGroupIds.contains(_activeGroupId));
+    }
+
+    // 카테고리 필터 적용
     final source = _categoryFilter == null
-        ? vlogs
-        : vlogs.where((v) {
+        ? src.toList()
+        : src.where((v) {
             if (v.markerEmoji == null) return _categoryFilter == '일반';
             return MarkerEmojis.fromEmoji(v.markerEmoji).category ==
                 _categoryFilter;
