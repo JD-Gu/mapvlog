@@ -2,14 +2,12 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:battery_plus/battery_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../models/friend_group.dart';
 import '../../models/friendship.dart';
@@ -18,6 +16,7 @@ import '../../models/vlog.dart';
 import '../../services/firestore_service.dart';
 import '../../services/friend_group_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/location_tracking_service.dart';
 import '../../services/user_status_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/comments_sheet.dart';
@@ -41,8 +40,7 @@ class LiveMapScreen extends StatefulWidget {
   State<LiveMapScreen> createState() => _LiveMapScreenState();
 }
 
-class _LiveMapScreenState extends State<LiveMapScreen>
-    with WidgetsBindingObserver {
+class _LiveMapScreenState extends State<LiveMapScreen> {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
   Set<Circle> _circles = {}; // 부끄럼 모드 친구 위치 노이즈 원
@@ -67,21 +65,10 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   List<Vlog> _recentCheckIns = [];
   StreamSubscription<List<Vlog>>? _recentCheckInsSub;
   // ping 구독은 MainShell에서 글로벌하게 처리 (라이브맵 밖에서도 알림 받음)
-  Timer? _locationTimer;
+  // 위치 갱신(타이머·가속도·배터리·라이프사이클)은 LocationTrackingService가
+  // 앱 전역에서 담당. 이 화면은 진입/이탈 시 setOnLiveMap()만 토글한다.
   /// "N분 전" 라벨 갱신용 — 위치 변화 없어도 1분마다 마커 재빌드
   Timer? _refreshTimer;
-
-  // ── Sprint 3: 가변 주기 + 절전 ───────────────────────────────────────────
-  StreamSubscription? _accelSub;
-  final Battery _battery = Battery();
-  Timer? _batteryTimer;
-  AppLifecycleState _appState = AppLifecycleState.resumed;
-
-  /// 가속도 누적 (이동 감지) — 30초 윈도우
-  double _accelAccum = 0;
-  int _accelSamples = 0;
-  bool _isMoving = false;
-  int _batteryLevel = 100;
 
   /// 지도 생성 전에 GPS 위치가 들어오면 임시 저장 → onMapCreated에서 이동
   LatLng? _pendingCameraLocation;
@@ -105,7 +92,6 @@ class _LiveMapScreenState extends State<LiveMapScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
@@ -151,15 +137,49 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       await _rebuildMarkers();
     });
 
-    // 4) 초기 위치 + 동적 주기 업데이트 + 카메라 이동
-    await _updateMyLocation(moveCamera: true);
-    _scheduleLocationTimer(); // 동적 주기 적용
-    // 5) 위치 변화 없어도 1분마다 마커 갱신 → "N분 전" 라벨 최신화
+    // 4) 친구지도 활성 → 전역 추적 서비스에 10초 고속 갱신 요청
+    LocationTrackingService.instance.setOnLiveMap(true);
+    // 5) 권한 확인·요청 후 내 위치로 카메라 이동 (첫 진입 즉시 표시)
+    await _centerCameraOnMe();
+    // 6) 위치 변화 없어도 1분마다 마커 갱신 → "N분 전" 라벨 최신화
     _refreshTimer = Timer.periodic(
         const Duration(minutes: 1), (_) => _rebuildMarkers());
-    // 6) Sprint 3: 가속도(이동 감지) + 배터리 모니터링
-    _startAccelMonitor();
-    _startBatteryMonitor();
+  }
+
+  /// 친구지도 진입 시 — 위치 권한을 요청하고 내 위치로 카메라를 이동한다.
+  /// 마지막 위치를 먼저 반영(즉시)한 뒤 정확 위치로 보정.
+  Future<void> _centerCameraOnMe() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return; // 권한 없음
+      }
+      final svc = LocationTrackingService.instance;
+      // ① 마지막 위치를 먼저 반영 (콜드 GPS 대기 없이 즉시 표시)
+      final last = await svc.lastKnown();
+      if (last != null) _moveCameraTo(last);
+      // ② 정확한 현재 위치로 보정 + 기록
+      final pos = await svc.updateNow();
+      if (pos != null) _moveCameraTo(pos);
+    } catch (_) {}
+  }
+
+  /// 위치로 카메라 이동 (첫 진입 1회만). 지도 준비 전이면 pending에 저장.
+  void _moveCameraTo(Position pos) {
+    if (_didInitialCameraMove) return;
+    final latlng = LatLng(pos.latitude, pos.longitude);
+    if (_mapController != null) {
+      _didInitialCameraMove = true;
+      _mapController!
+          .animateCamera(CameraUpdate.newLatLngZoom(latlng, 15));
+    } else {
+      _pendingCameraLocation = latlng;
+    }
   }
 
   /// 친구·내 체크인 vlog 구독 (만료 전까지 표시, 재구독 = 친구 목록 바뀔 때마다)
@@ -394,141 +414,6 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     }
   }
 
-  // ─── Sprint 3 절전 로직 ─────────────────────────────────────────────────
-
-  /// 가속도계 — 1초 간격 샘플링 → 30개 모이면 이동 여부 판정
-  /// |a| - 9.8(중력) 의 절댓값을 누적; 평균이 임계값 초과면 이동중
-  void _startAccelMonitor() {
-    _accelSub = accelerometerEventStream(
-            samplingPeriod: const Duration(seconds: 1))
-        .listen((e) {
-      final magnitude = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
-      _accelAccum += (magnitude - 9.8).abs();
-      _accelSamples++;
-      // 30초마다 판정 + 인터벌 재계산
-      if (_accelSamples >= 30) {
-        final avg = _accelAccum / _accelSamples;
-        final wasMoving = _isMoving;
-        _isMoving = avg > 0.5; // 임계값 0.5 m/s²
-        _accelAccum = 0;
-        _accelSamples = 0;
-        if (wasMoving != _isMoving) {
-          _scheduleLocationTimer(); // 이동 상태 변화 → 주기 갱신
-        }
-      }
-    });
-  }
-
-  /// 배터리 — 초기 1회 + 5분마다 갱신
-  Future<void> _startBatteryMonitor() async {
-    try {
-      _batteryLevel = await _battery.batteryLevel;
-    } catch (_) {}
-    _batteryTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
-      try {
-        final level = await _battery.batteryLevel;
-        final wasLow = _batteryLevel <= 15;
-        final isLow = level <= 15;
-        _batteryLevel = level;
-        if (wasLow != isLow) {
-          _scheduleLocationTimer(); // 절전 모드 변화 → 주기 갱신
-        }
-      } catch (_) {}
-    });
-  }
-
-  /// 현재 상태에 맞는 위치 갱신 주기 계산
-  Duration _computeLocationInterval() {
-    if (_appState == AppLifecycleState.resumed) {
-      return const Duration(seconds: 30); // 포그라운드 스트리밍
-    }
-    if (_batteryLevel <= 15) {
-      return const Duration(minutes: 30); // 배터리 15% 이하 강제 절전
-    }
-    if (_isMoving) {
-      return const Duration(minutes: 4); // 이동중: 3~5분
-    }
-    return const Duration(minutes: 18); // 정지: 15~20분
-  }
-
-  /// 인터벌 적용 — 기존 타이머 취소 후 새 주기로 시작
-  void _scheduleLocationTimer() {
-    _locationTimer?.cancel();
-    final interval = _computeLocationInterval();
-    debugPrint('[LiveMap] 위치 갱신 주기 → $interval'
-        ' (state=$_appState, moving=$_isMoving, battery=$_batteryLevel%)');
-    _locationTimer =
-        Timer.periodic(interval, (_) => _updateMyLocation());
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final prev = _appState;
-    _appState = state;
-    if (state == AppLifecycleState.resumed) {
-      _updateMyLocation(); // 포그라운드 복귀 → 즉시 갱신
-    }
-    if (prev != state) {
-      _scheduleLocationTimer(); // 라이프사이클 변화 → 주기 재계산
-    }
-  }
-
-  Future<void> _updateMyLocation({bool moveCamera = false}) async {
-    final uid = _currentUid;
-    if (uid == null) return;
-    try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        final asked = await Geolocator.requestPermission();
-        if (asked == LocationPermission.denied ||
-            asked == LocationPermission.deniedForever) {
-          return;
-        }
-      }
-      // ① 첫 진입 즉시 표시 — 마지막 위치를 먼저 반영 (콜드 GPS 대기 없이 바로
-      //    내 마커/카메라가 뜨도록). 웹은 미지원이라 null → 무시.
-      if (moveCamera && !_didInitialCameraMove) {
-        try {
-          final last = await Geolocator.getLastKnownPosition();
-          if (last != null) await _applyMyLocation(uid, last, moveCamera);
-        } catch (_) {}
-      }
-      // ② 정확한 현재 위치로 갱신 (타임아웃으로 콜드 스타트 무한대기 방지)
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 12)),
-      );
-      await _applyMyLocation(uid, pos, moveCamera);
-    } catch (_) {
-      // 위치 권한 없음·실패: 무시 (마지막 위치가 이미 반영됐으면 그게 표시됨)
-    }
-  }
-
-  /// 위치 1건을 내 doc 에 반영 + (요청 시 1회) 카메라 이동
-  Future<void> _applyMyLocation(
-      String uid, Position pos, bool moveCamera) async {
-    await UserStatusService.updateLocation(
-      uid: uid,
-      lat: pos.latitude,
-      lng: pos.longitude,
-      isMoving: _isMoving,
-      batteryLevel: _batteryLevel,
-    );
-    if (moveCamera && !_didInitialCameraMove) {
-      final latlng = LatLng(pos.latitude, pos.longitude);
-      if (_mapController != null) {
-        _didInitialCameraMove = true;
-        await _mapController!
-            .animateCamera(CameraUpdate.newLatLngZoom(latlng, 15));
-      } else {
-        // 지도 준비 전 → pending에 저장 (onMapCreated 에서 이동)
-        _pendingCameraLocation = latlng;
-      }
-    }
-  }
-
   /// 사용자 프로필 사진을 ui.Image로 로드 (캐시 사용)
   Future<ui.Image?> _loadUserPhoto(String? url) async {
     if (url == null || url.isEmpty) return null;
@@ -758,7 +643,7 @@ class _LiveMapScreenState extends State<LiveMapScreen>
     );
     if (picked != PrivacyMode.ice) {
       // 정확/안개로 전환 → 즉시 새 위치 업데이트
-      await _updateMyLocation();
+      await LocationTrackingService.instance.updateNow();
     }
   }
 
@@ -769,7 +654,11 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
           LatLng(_me!.location!.lat, _me!.location!.lng), 15));
     } else {
-      await _updateMyLocation();
+      final pos = await LocationTrackingService.instance.updateNow();
+      if (pos != null && _mapController != null) {
+        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(
+            LatLng(pos.latitude, pos.longitude), 15));
+      }
     }
   }
 
@@ -841,7 +730,8 @@ class _LiveMapScreenState extends State<LiveMapScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    // 친구지도 이탈 → 전역 추적은 계속되되 고속(10초) 갱신 해제
+    LocationTrackingService.instance.setOnLiveMap(false);
     _usersSub?.cancel();
     _meSub?.cancel();
     _friendsSub?.cancel();
@@ -852,9 +742,6 @@ class _LiveMapScreenState extends State<LiveMapScreen>
       sub.cancel();
     }
     _theirViewSubs.clear();
-    _accelSub?.cancel();
-    _batteryTimer?.cancel();
-    _locationTimer?.cancel();
     _refreshTimer?.cancel();
     _mapController?.dispose();
     super.dispose();

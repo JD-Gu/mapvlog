@@ -19,6 +19,7 @@ import 'screens/live_map/live_map_screen.dart';
 import 'screens/friends/friend_list_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/vlog/vlog_player_screen.dart';
+import 'services/location_tracking_service.dart';
 import 'services/push_service.dart';
 import 'services/user_status_service.dart';
 import 'services/web_version_check_service.dart';
@@ -259,6 +260,8 @@ class _MainShellState extends State<MainShell> {
     try {
       await UserStatusService.ensureUserDoc(user);
     } catch (_) {}
+    // 앱 전역 위치 추적 시작 (어느 탭에 있든 동적 주기로 내 위치 기록)
+    LocationTrackingService.instance.start(user.uid);
     // FCM 푸시 초기화 (권한요청 + 토큰 저장)
     try {
       await PushService.instance.init(user.uid);
@@ -393,6 +396,7 @@ class _MainShellState extends State<MainShell> {
       _pingsSub = null;
       _shownPingIds.clear();
       _isFirstPingEmission = true;
+      LocationTrackingService.instance.stop(); // 로그아웃 → 추적 정지
     }
   }
 
@@ -401,6 +405,7 @@ class _MainShellState extends State<MainShell> {
     _authProvider?.removeListener(_onAuthChanged);
     _pingsSub?.cancel();
     _versionCheck?.stop();
+    LocationTrackingService.instance.stop();
     super.dispose();
   }
 
