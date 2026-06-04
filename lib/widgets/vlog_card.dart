@@ -349,36 +349,35 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  // 위치(장소명+주소 결합) · 시간
+                  // 위치(장소명+주소) · 거리 · 시간
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 1),
-                          child: Icon(Icons.place,
-                              size: 11,
-                              color: AppColors.textDisabled),
-                        ),
+                        const Icon(Icons.place,
+                            size: 11, color: AppColors.textDisabled),
                         const SizedBox(width: 2),
-                        Expanded(
+                        Flexible(
                           child: Text(
-                            () {
-                              final loc = combinedLocation(
-                                  v.placeName, v.address);
-                              final time = _relativeTime(v.createdAt);
-                              return loc.isEmpty
-                                  ? time
-                                  : '$loc · $time';
-                            }(),
+                            combinedLocation(v.placeName, v.address),
                             style: const TextStyle(
                                 fontSize: 11,
                                 height: 1.3,
                                 color: AppColors.textSecondary),
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                        // 거리 — 주소 옆에 항상 노출
+                        if (_distanceChip() != null) ...[
+                          const SizedBox(width: 5),
+                          _distanceChip()!,
+                        ],
+                        const SizedBox(width: 5),
+                        Text(
+                          _relativeTime(v.createdAt),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textDisabled),
                         ),
                       ],
                     ),
@@ -555,6 +554,14 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    // 거리 — 주소 옆에 항상 노출 (정렬과 무관)
+                    if (_distanceChip() != null) ...[
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1.5),
+                        child: _distanceChip()!,
+                      ),
+                    ],
                     Padding(
                       padding: const EdgeInsets.only(left: 6, top: 1.5),
                       child: Text(
@@ -697,37 +704,7 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          // 주소는 헤더(장소명+주소 결합)에 표시되므로 하단은 거리 칩만
-          if (_distanceLabel() != null) ...[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.near_me_rounded,
-                        size: 11, color: AppColors.primary),
-                    const SizedBox(width: 3),
-                    Text(
-                      _distanceLabel()!,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          // 거리는 헤더(주소 옆)로 이동 — 하단 칩 제거
           // 최신 댓글 1개 미리보기 (commentCount > 0 일 때만)
           if (widget.vlog.commentCount > 0) ...[
             const SizedBox(height: 6),
@@ -1075,6 +1052,24 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
       widget.vlog.lng,
     );
     return _fmtDistance(m);
+  }
+
+  /// 거리 칩(아이콘+km, primary 강조) — 헤더 주소 옆에 항상 노출. 없으면 null.
+  Widget? _distanceChip() {
+    final label = _distanceLabel();
+    if (label == null) return null;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.near_me_rounded, size: 10.5, color: AppColors.primary),
+        const SizedBox(width: 2),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary)),
+      ],
+    );
   }
 }
 

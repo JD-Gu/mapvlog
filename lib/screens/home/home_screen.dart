@@ -183,6 +183,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _subscribeFriends();
     _subscribeGroups();
     _loadLastSeen();
+    _primeDistance();
+  }
+
+  /// 카드에 거리를 항상 표시하기 위해 진입 시 위치를 미리 확보.
+  /// 권한 프롬프트는 띄우지 않음(마지막 위치 → 이미 허용된 경우만 현재 위치).
+  Future<void> _primeDistance() async {
+    if (_position != null) return;
+    try {
+      Position? pos = await Geolocator.getLastKnownPosition();
+      if (pos == null) {
+        final perm = await Geolocator.checkPermission();
+        if (perm == LocationPermission.always ||
+            perm == LocationPermission.whileInUse) {
+          pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: Duration(seconds: 5)),
+          );
+        }
+      }
+      if (pos != null && mounted && _position == null) {
+        setState(() => _position = pos);
+      }
+    } catch (_) {}
   }
 
   /// 친구 목록 구독 — 친구가 바뀌면 자동으로 피드도 갱신
