@@ -71,5 +71,19 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- 외부 링크(http/https) 열기 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <!-- 지도 앱 길찾기 연동(스킴 감지용) -->
+        <package android:name="com.google.android.apps.maps"/>
+        <package android:name="com.nhn.android.nmap"/>
+        <package android:name="net.daum.android.map"/>
+        <package android:name="com.skt.tmap.ku"/>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="nmap"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="kakaomap"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="tmap"/></intent>
+        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="geo"/></intent>
     </queries>
 </manifest>

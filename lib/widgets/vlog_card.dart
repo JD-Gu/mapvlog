@@ -18,6 +18,7 @@ import '../utils/location_format.dart';
 import '../utils/marker_colors.dart';
 import '../models/comment.dart';
 import 'comments_sheet.dart';
+import 'map_launcher_sheet.dart';
 import 'reaction_bar.dart';
 
 /// 인스타그램·유튜브 스타일 vlog 카드
@@ -349,30 +350,45 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  // 위치(장소명+주소) · 거리 · 시간
+                  // 위치(장소명+주소) · 거리 · 시간 — 탭하면 길찾기
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
                     child: Row(
                       children: [
-                        const Icon(Icons.place,
-                            size: 11, color: AppColors.textDisabled),
-                        const SizedBox(width: 2),
                         Flexible(
-                          child: Text(
-                            combinedLocation(v.placeName, v.address),
-                            style: const TextStyle(
-                                fontSize: 11,
-                                height: 1.3,
-                                color: AppColors.textSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _openDirections,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.place,
+                                    size: 11, color: AppColors.primary),
+                                const SizedBox(width: 2),
+                                Flexible(
+                                  child: Text(
+                                    combinedLocation(v.placeName, v.address),
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        height: 1.3,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // 거리 — 주소 옆에 항상 노출
+                                if (_distanceChip() != null) ...[
+                                  const SizedBox(width: 5),
+                                  _distanceChip()!,
+                                ],
+                                const SizedBox(width: 3),
+                                const Icon(Icons.directions,
+                                    size: 13, color: AppColors.primary),
+                              ],
+                            ),
                           ),
                         ),
-                        // 거리 — 주소 옆에 항상 노출
-                        if (_distanceChip() != null) ...[
-                          const SizedBox(width: 5),
-                          _distanceChip()!,
-                        ],
                         const SizedBox(width: 5),
                         Text(
                           _relativeTime(v.createdAt),
@@ -539,29 +555,45 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
                             ),
                     ),
                     const SizedBox(width: 3),
-                    // 장소명 + 주소 결합 (직관적 위치 정보)
+                    // 장소명 + 주소 + 거리 — 탭하면 길찾기
                     Expanded(
-                      child: Text(
-                        combinedLocation(
-                            widget.vlog.placeName, widget.vlog.address),
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _openDirections,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                combinedLocation(widget.vlog.placeName,
+                                    widget.vlog.address),
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.3,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (_distanceChip() != null) ...[
+                              const SizedBox(width: 6),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1.5),
+                                child: _distanceChip()!,
+                              ),
+                            ],
+                            const SizedBox(width: 3),
+                            const Padding(
+                              padding: EdgeInsets.only(top: 1.5),
+                              child: Icon(Icons.directions,
+                                  size: 13, color: AppColors.primary),
+                            ),
+                          ],
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // 거리 — 주소 옆에 항상 노출 (정렬과 무관)
-                    if (_distanceChip() != null) ...[
-                      const SizedBox(width: 6),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 1.5),
-                        child: _distanceChip()!,
-                      ),
-                    ],
                     Padding(
                       padding: const EdgeInsets.only(left: 6, top: 1.5),
                       child: Text(
@@ -1038,6 +1070,17 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
   static String _fmtDistance(double meters) {
     if (meters < 1000) return '${meters.round()}m';
     return '${(meters / 1000).toStringAsFixed(1)}km';
+  }
+
+  /// 주소·거리 탭 → 지도 앱 길찾기 시트 (좌표 없으면 무시)
+  void _openDirections() {
+    final v = widget.vlog;
+    if (v.lat == 0 && v.lng == 0) return;
+    HapticFeedback.selectionClick();
+    final name = v.placeName.isNotEmpty
+        ? v.placeName
+        : (v.title.isNotEmpty ? v.title : '목적지');
+    MapLauncherSheet.show(context, lat: v.lat, lng: v.lng, name: name);
   }
 
   /// 현재 위치 기반 거리 (없으면 null)
