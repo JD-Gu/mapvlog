@@ -1,9 +1,13 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/friend_group.dart';
 import '../../models/friendship.dart';
 import '../../models/vlog.dart';
 import '../../services/firestore_service.dart';
+import '../../services/friend_group_service.dart';
 import '../../services/friend_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/marker_emojis.dart';
@@ -136,6 +140,31 @@ class _AcceptedFriendsTab extends StatefulWidget {
 
 class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
   String _query = '';
+  String? _groupFilter; // FriendGroup id, null = 전체
+  FriendRelType? _modeFilter; // 위치 모드, null = 전체
+  List<FriendGroup> _groups = [];
+  StreamSubscription<List<FriendGroup>>? _groupsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _groupsSub = FriendGroupService.watchMyGroups().listen((g) {
+      if (!mounted) return;
+      setState(() {
+        _groups = g;
+        // 선택한 그룹이 삭제됐으면 전체로 복귀
+        if (_groupFilter != null && !g.any((e) => e.id == _groupFilter)) {
+          _groupFilter = null;
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _groupsSub?.cancel();
+    super.dispose();
+  }
 
   bool _matches(Friendship f) {
     if (_query.isEmpty) return true;
@@ -144,6 +173,14 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
     final orig = (f.displayName ?? '').toLowerCase();
     final email = (f.email ?? '').toLowerCase();
     return name.contains(q) || orig.contains(q) || email.contains(q);
+  }
+
+  FriendGroup? get _activeGroup {
+    if (_groupFilter == null) return null;
+    for (final g in _groups) {
+      if (g.id == _groupFilter) return g;
+    }
+    return null;
   }
 
   @override
@@ -172,15 +209,33 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
           );
         }
 
-        final list = all.where(_matches).toList();
+        // 1) 검색 → 2) 그룹 필터
+        var list = all.where(_matches).toList();
+        final grp = _activeGroup;
+        if (grp != null) {
+          final members = grp.memberUids.toSet();
+          list = list.where((f) => members.contains(f.friendUid)).toList();
+        }
 
-        // 그룹별 분리 (베프 / 일반 / 불편)
+        // 위치 모드별 분리 (그룹 필터 적용 후 기준)
         final best =
             list.where((f) => f.relType == FriendRelType.best).toList();
         final normal =
             list.where((f) => f.relType == FriendRelType.normal).toList();
         final bad =
             list.where((f) => f.relType == FriendRelType.bad).toList();
+
+        // 모드 필터 적용된 섹션 구성
+        final sections = <Widget>[];
+        void addSection(FriendRelType t, List<Friendship> fs) {
+          if (fs.isEmpty) return;
+          if (_modeFilter != null && _modeFilter != t) return;
+          sections.add(_GroupSection(relType: t, friends: fs));
+        }
+
+        addSection(FriendRelType.best, best);
+        addSection(FriendRelType.normal, normal);
+        addSection(FriendRelType.bad, bad);
 
         return Column(
           children: [
@@ -197,7 +252,8 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
                   prefixIcon: const Icon(Icons.search,
                       size: 18, color: AppColors.textSecondary),
                   filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  fillColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 10),
@@ -208,31 +264,45 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
                 ),
               ),
             ),
+            // 위치 모드 필터 칩 (베프/부끄럼/잠수)
+            _ModeFilterBar(
+              selected: _modeFilter,
+              bestCount: best.length,
+              normalCount: normal.length,
+              badCount: bad.length,
+              onSelect: (m) {
+                HapticFeedback.selectionClick();
+                setState(() => _modeFilter = m);
+              },
+            ),
+            // 그룹 필터 칩 (사용자가 만든 그룹이 있을 때만)
+            if (_groups.isNotEmpty)
+              _GroupFilterBar(
+                groups: _groups,
+                selected: _groupFilter,
+                onSelect: (id) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _groupFilter = id);
+                },
+              ),
             Expanded(
-              child: list.isEmpty
-                  ? const Center(
+              child: sections.isEmpty
+                  ? Center(
                       child: Padding(
-                        padding: EdgeInsets.all(AppSpacing.xl),
+                        padding: const EdgeInsets.all(AppSpacing.xl),
                         child: Text(
-                          '검색 결과가 없어요',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary),
+                          _query.isNotEmpty
+                              ? '검색 결과가 없어요'
+                              : '이 필터에 해당하는 친구가 없어요',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary),
                         ),
                       ),
                     )
                   : ListView(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       children: [
-                        if (best.isNotEmpty)
-                          _GroupSection(
-                              relType: FriendRelType.best, friends: best),
-                        if (normal.isNotEmpty)
-                          _GroupSection(
-                              relType: FriendRelType.normal, friends: normal),
-                        if (bad.isNotEmpty)
-                          _GroupSection(
-                              relType: FriendRelType.bad, friends: bad),
+                        ...sections,
                         const SizedBox(height: 24),
                       ],
                     ),
@@ -240,6 +310,158 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
           ],
         );
       },
+    );
+  }
+}
+
+// ─── 위치 모드 필터 바 (전체 / 베프 / 부끄럼 / 잠수) ──────────────────────────
+class _ModeFilterBar extends StatelessWidget {
+  final FriendRelType? selected;
+  final int bestCount;
+  final int normalCount;
+  final int badCount;
+  final ValueChanged<FriendRelType?> onSelect;
+  const _ModeFilterBar({
+    required this.selected,
+    required this.bestCount,
+    required this.normalCount,
+    required this.badCount,
+    required this.onSelect,
+  });
+
+  static Color _colorOf(FriendRelType t) => switch (t) {
+        FriendRelType.best => const Color(0xFFEC407A),
+        FriendRelType.normal => const Color(0xFF1A73E8),
+        FriendRelType.bad => const Color(0xFF42A5F5),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final total = bestCount + normalCount + badCount;
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        children: [
+          _FriendFilterChip(
+            label: '전체 $total',
+            selected: selected == null,
+            color: AppColors.primary,
+            onTap: () => onSelect(null),
+          ),
+          const SizedBox(width: 6),
+          for (final t in FriendRelType.values) ...[
+            _FriendFilterChip(
+              emoji: t.emoji,
+              label:
+                  '${t.label} ${switch (t) { FriendRelType.best => bestCount, FriendRelType.normal => normalCount, FriendRelType.bad => badCount }}',
+              selected: selected == t,
+              color: _colorOf(t),
+              onTap: () => onSelect(selected == t ? null : t),
+            ),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── 그룹 필터 바 (전체 / 사용자 정의 그룹들) ────────────────────────────────
+class _GroupFilterBar extends StatelessWidget {
+  final List<FriendGroup> groups;
+  final String? selected; // group id
+  final ValueChanged<String?> onSelect;
+  const _GroupFilterBar({
+    required this.groups,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        children: [
+          _FriendFilterChip(
+            emoji: '👥',
+            label: '전체 그룹',
+            selected: selected == null,
+            color: const Color(0xFF7C4DFF),
+            onTap: () => onSelect(null),
+          ),
+          const SizedBox(width: 6),
+          for (final g in groups) ...[
+            _FriendFilterChip(
+              emoji: g.emoji,
+              label: '${g.name} ${g.memberUids.length}',
+              selected: selected == g.id,
+              color: const Color(0xFF7C4DFF),
+              onTap: () => onSelect(selected == g.id ? null : g.id),
+            ),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── 친구 필터 칩 (공용) ──────────────────────────────────────────────────────
+class _FriendFilterChip extends StatelessWidget {
+  final String label;
+  final String? emoji;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  const _FriendFilterChip({
+    required this.label,
+    this.emoji,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.15)
+              : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(
+            color: selected ? color : Colors.transparent,
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (emoji != null) ...[
+              Text(emoji!, style: const TextStyle(fontSize: 13)),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? color : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
