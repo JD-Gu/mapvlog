@@ -279,6 +279,7 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
             if (_groups.isNotEmpty)
               _GroupFilterBar(
                 groups: _groups,
+                allFriends: all,
                 selected: _groupFilter,
                 onSelect: (id) {
                   HapticFeedback.selectionClick();
@@ -371,10 +372,12 @@ class _ModeFilterBar extends StatelessWidget {
 // ─── 그룹 필터 바 (전체 / 사용자 정의 그룹들) ────────────────────────────────
 class _GroupFilterBar extends StatelessWidget {
   final List<FriendGroup> groups;
+  final List<Friendship> allFriends; // 멤버 편집 picker 용
   final String? selected; // group id
   final ValueChanged<String?> onSelect;
   const _GroupFilterBar({
     required this.groups,
+    required this.allFriends,
     required this.selected,
     required this.onSelect,
   });
@@ -402,10 +405,197 @@ class _GroupFilterBar extends StatelessWidget {
               selected: selected == g.id,
               color: const Color(0xFF7C4DFF),
               onTap: () => onSelect(selected == g.id ? null : g.id),
+              // 길게 누르면 멤버 일괄 편집 시트
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                _GroupMemberPicker.show(context, g, allFriends);
+              },
             ),
             const SizedBox(width: 6),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ─── 그룹 멤버 일괄 편집 시트 (그룹 칩 롱프레스) ──────────────────────────────
+class _GroupMemberPicker {
+  static Future<void> show(
+    BuildContext context,
+    FriendGroup group,
+    List<Friendship> friends,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => _GroupMemberPickerBody(group: group, friends: friends),
+    );
+  }
+}
+
+class _GroupMemberPickerBody extends StatefulWidget {
+  final FriendGroup group;
+  final List<Friendship> friends;
+  const _GroupMemberPickerBody({required this.group, required this.friends});
+
+  @override
+  State<_GroupMemberPickerBody> createState() => _GroupMemberPickerBodyState();
+}
+
+class _GroupMemberPickerBodyState extends State<_GroupMemberPickerBody> {
+  late final Set<String> _selected =
+      widget.group.memberUids.toSet();
+  bool _saving = false;
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await FriendGroupService.setGroupMembers(
+        groupId: widget.group.id,
+        memberUids: _selected.toList(),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${widget.group.name} 멤버 ${_selected.length}명으로 저장했어요')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('저장 실패: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final h = MediaQuery.of(context).size.height;
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: h * 0.8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textDisabled.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+              child: Row(
+                children: [
+                  Text(widget.group.emoji,
+                      style: const TextStyle(fontSize: 20)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${widget.group.name} 멤버 편집',
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w800),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text('${_selected.length}명',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: cs.primary)),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: widget.friends.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text('친구가 없어요',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 13)),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: widget.friends.length,
+                      itemBuilder: (_, i) {
+                        final f = widget.friends[i];
+                        final on = _selected.contains(f.friendUid);
+                        return CheckboxListTile(
+                          value: on,
+                          activeColor: cs.primary,
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          onChanged: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() {
+                              if (v == true) {
+                                _selected.add(f.friendUid);
+                              } else {
+                                _selected.remove(f.friendUid);
+                              }
+                            });
+                          },
+                          secondary: _FriendAvatar(
+                            name: f.effectiveName,
+                            photoUrl: f.photoUrl,
+                            size: 38,
+                          ),
+                          title: Text(
+                            f.effectiveName,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: f.email != null
+                              ? Text(f.email!,
+                                  style: const TextStyle(fontSize: 11),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis)
+                              : null,
+                        );
+                      },
+                    ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('저장',
+                            style: TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -418,12 +608,14 @@ class _FriendFilterChip extends StatelessWidget {
   final bool selected;
   final Color color;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   const _FriendFilterChip({
     required this.label,
     this.emoji,
     required this.selected,
     required this.color,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -431,6 +623,7 @@ class _FriendFilterChip extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),

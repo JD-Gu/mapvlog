@@ -2684,22 +2684,30 @@ class _GroupFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final accent = _modeAccent();
+    // 친구 목록 칩과 동일한 틴트+테두리 스타일.
+    // 지도 위에서도 읽히도록 선택 배경은 surface 에 합성한 불투명 틴트 사용.
+    final bg = selected
+        ? Color.alphaBlend(accent.withValues(alpha: 0.16), cs.surface)
+        : cs.surfaceContainerHighest;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
-          color: selected
-              ? accent
-              : Theme.of(context).colorScheme.surface,
+          color: bg,
           borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(
+            color: selected ? accent : Colors.transparent,
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withAlpha(28),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withAlpha(22),
+              blurRadius: 6,
+              offset: const Offset(0, 1),
             ),
           ],
         ),
@@ -2711,11 +2719,9 @@ class _GroupFilterChip extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                color: selected
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.onSurface,
+                color: selected ? accent : cs.onSurfaceVariant,
               ),
             ),
             if (mode != null && !selected) ...[
