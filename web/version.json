@@ -1,5 +1,5 @@
 {
-  "version": "1.65.2",
-  "build": "107",
-  "notes": "• 백그라운드 위치 공유 주기를 시간 기준 5분 고정으로 변경(이동과 무관)"
+  "version": "1.65.3",
+  "build": "108",
+  "notes": "\u2022 \uBC31\uADF8\uB77C\uC6B4\uB4DC \uC704\uCE58 \uC8FC\uAE30 1\uBD84 \uACE0\uC815 + \uC815\uD655\uB3C4 \uC0C1\uD5A5(\uAC31\uC2E0 \uC548\uB428 \uC644\uD654)"
 }
