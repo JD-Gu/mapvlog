@@ -3,7 +3,8 @@
 PinFlick 1인 개발(구자덕 + Claude Code) 기준 로드맵입니다.
 초기 "GPS 브이로그(MapVlog)"에서 **친구 위치 공유 소셜 플랫폼(PinFlick)** 으로 피벗하여 운영 중입니다.
 
-> 현재 버전: **1.56.x (BETA)** · 웹(Firebase Hosting) + Android APK 베타 운영 중
+> 현재 버전: **1.64.x (BETA)** · 웹(Firebase Hosting) + Android APK 베타 운영 중
+> 단기 실행 순서는 **`12_short_term_roadmap.md`** 참조 (Phase 1 백그라운드 위치 → Phase 2 이벤트 맵).
 
 ---
 
