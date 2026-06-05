@@ -30,6 +30,29 @@ class _FriendListScreenState extends State<FriendListScreen>
   late final TabController _tabCtrl = TabController(length: 3, vsync: this);
   int _incomingCount = 0;
 
+  static const _appbarHintKey = 'friend_appbar_hint_dismissed_v1';
+  bool _appbarHintDismissed = true; // 로드 전 깜빡임 방지
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppbarHint();
+  }
+
+  Future<void> _loadAppbarHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() =>
+          _appbarHintDismissed = prefs.getBool(_appbarHintKey) ?? false);
+    }
+  }
+
+  Future<void> _dismissAppbarHint() async {
+    setState(() => _appbarHintDismissed = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_appbarHintKey, true);
+  }
+
   @override
   void dispose() {
     _tabCtrl.dispose();
@@ -122,18 +145,114 @@ class _FriendListScreenState extends State<FriendListScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabCtrl,
+      body: Column(
         children: [
-          _AcceptedFriendsTab(),
-          _IncomingTab(onCount: (n) {
-            if (mounted && n != _incomingCount) {
-              setState(() => _incomingCount = n);
-            }
-          }),
-          _OutgoingTab(),
+          // 첫 진입 1회 — 상단 아이콘 안내 (닫으면 다시 안 뜸)
+          if (!_appbarHintDismissed)
+            _AppBarHint(onClose: _dismissAppbarHint),
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: [
+                _AcceptedFriendsTab(),
+                _IncomingTab(onCount: (n) {
+                  if (mounted && n != _incomingCount) {
+                    setState(() => _incomingCount = n);
+                  }
+                }),
+                _OutgoingTab(),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+// ─── 첫 진입 상단 아이콘 안내 배너 ────────────────────────────────────────────
+class _AppBarHint extends StatelessWidget {
+  final VoidCallback onClose;
+  const _AppBarHint({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Row(
+                  children: [
+                    Text('👆', style: TextStyle(fontSize: 13)),
+                    SizedBox(width: 5),
+                    Text('오른쪽 위 버튼 안내',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 4,
+                  children: const [
+                    _HintItem(icon: Icons.ios_share, label: '친구 초대'),
+                    _HintItem(
+                        icon: Icons.group_work_outlined, label: '그룹 관리'),
+                    _HintItem(
+                        icon: Icons.person_add_outlined, label: '친구 추가'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onClose,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(Icons.close,
+                  size: 16, color: cs.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HintItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _HintItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: AppColors.primary),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface)),
+      ],
     );
   }
 }
