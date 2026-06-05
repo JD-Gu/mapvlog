@@ -136,6 +136,7 @@ class _MapLauncherSheetBody extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             const SizedBox(height: 12),
             _AppTile(
+              asset: 'assets/images/map_google.png',
               emoji: '🗺️',
               bg: const Color(0xFF34A853),
               label: '구글 지도',
@@ -145,6 +146,7 @@ class _MapLauncherSheetBody extends StatelessWidget {
               },
             ),
             _AppTile(
+              asset: 'assets/images/map_naver.png',
               emoji: '🟢',
               bg: const Color(0xFF03C75A),
               label: '네이버 지도',
@@ -154,9 +156,9 @@ class _MapLauncherSheetBody extends StatelessWidget {
               },
             ),
             _AppTile(
+              asset: 'assets/images/map_kakao.png',
               emoji: '💛',
               bg: const Color(0xFFFEE500),
-              fg: const Color(0xFF3C1E1E),
               label: '카카오맵',
               onTap: () {
                 Navigator.pop(context);
@@ -164,6 +166,7 @@ class _MapLauncherSheetBody extends StatelessWidget {
               },
             ),
             _AppTile(
+              asset: 'assets/images/map_tmap.png',
               emoji: '🧭',
               bg: const Color(0xFF1A4DE6),
               label: 'TMAP',
@@ -194,15 +197,15 @@ class _MapLauncherSheetBody extends StatelessWidget {
 }
 
 class _AppTile extends StatelessWidget {
+  final String asset; // 공식 아이콘 PNG (없으면 emoji 로 폴백)
   final String emoji;
   final Color bg;
-  final Color? fg;
   final String label;
   final VoidCallback onTap;
   const _AppTile({
+    required this.asset,
     required this.emoji,
     required this.bg,
-    this.fg,
     required this.label,
     required this.onTap,
   });
@@ -222,15 +225,23 @@ class _AppTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    asset,
+                    width: 38,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    // 아이콘 파일이 없으면 색상 + 이모지로 폴백
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      color: bg,
+                      child:
+                          Text(emoji, style: const TextStyle(fontSize: 18)),
+                    ),
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 18)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
