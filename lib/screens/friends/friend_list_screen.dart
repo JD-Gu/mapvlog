@@ -289,28 +289,55 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
                 ),
               ),
             ),
-            // 위치 모드 필터 칩 (베프/부끄럼/잠수)
-            _ModeFilterBar(
-              selected: _modeFilter,
-              bestCount: best.length,
-              normalCount: normal.length,
-              badCount: bad.length,
-              onSelect: (m) {
-                HapticFeedback.selectionClick();
-                setState(() => _modeFilter = m);
-              },
-            ),
-            // 그룹 필터 칩 (사용자가 만든 그룹이 있을 때만)
-            if (_groups.isNotEmpty)
-              _GroupFilterBar(
-                groups: _groups,
-                allFriends: all,
-                selected: _groupFilter,
-                onSelect: (id) {
-                  HapticFeedback.selectionClick();
-                  setState(() => _groupFilter = id);
-                },
+            // 필터 패널 — 위치 공개 모드 / 소속 그룹을 한 카드로 묶고
+            // 사이에 구분선을 둬서 두 필터의 성격을 시각적으로 분리
+            Container(
+              margin: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(14),
               ),
+              child: Column(
+                children: [
+                  // 위치 공개 모드 (베프/부끄럼/잠수)
+                  _ModeFilterBar(
+                    selected: _modeFilter,
+                    bestCount: best.length,
+                    normalCount: normal.length,
+                    badCount: bad.length,
+                    onSelect: (m) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _modeFilter = m);
+                    },
+                  ),
+                  // 소속 그룹 (사용자가 만든 그룹이 있을 때만)
+                  if (_groups.isNotEmpty) ...[
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 14,
+                      endIndent: 14,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.5),
+                    ),
+                    _GroupFilterBar(
+                      groups: _groups,
+                      allFriends: all,
+                      selected: _groupFilter,
+                      onSelect: (id) {
+                        HapticFeedback.selectionClick();
+                        setState(() => _groupFilter = id);
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
             // 멤버 편집 발견성 힌트 (그룹 있을 때 1회, 닫으면 다시 안 뜸)
             if (_groups.isNotEmpty && !_hintDismissed)
               Padding(
@@ -402,13 +429,17 @@ class _ModeFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = bestCount + normalCount + badCount;
     return SizedBox(
-      height: 40,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      height: 42,
+      child: Row(
         children: [
+          const _FilterRowLabel('공개'),
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 12),
+              children: [
           _FriendFilterChip(
-            label: '전체 $total',
+            label: '전체 친구 $total',
             selected: selected == null,
             color: AppColors.primary,
             onTap: () => onSelect(null),
@@ -425,7 +456,32 @@ class _ModeFilterBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
           ],
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── 필터 줄 앞 고정 라벨 ─────────────────────────────────────────────────────
+class _FilterRowLabel extends StatelessWidget {
+  final String text;
+  const _FilterRowLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 14, right: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -447,11 +503,15 @@ class _GroupFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 40,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      height: 42,
+      child: Row(
         children: [
+          const _FilterRowLabel('그룹'),
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 12),
+              children: [
           _FriendFilterChip(
             emoji: '👥',
             label: '전체 그룹',
@@ -475,6 +535,9 @@ class _GroupFilterBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
           ],
+              ],
+            ),
+          ),
         ],
       ),
     );
