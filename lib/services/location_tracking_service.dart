@@ -2,10 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+// 웹은 stub(기본 설정), Android는 포그라운드 서비스 설정 — geolocator_android를
+// 웹 번들에서 제외하기 위한 조건부 임포트.
+import 'bg_location_settings_stub.dart'
+    if (dart.library.io) 'bg_location_settings_android.dart';
 import 'user_status_service.dart';
 
 /// 앱 전역 위치 추적 서비스 (싱글톤).
@@ -45,6 +51,14 @@ class LocationTrackingService with WidgetsBindingObserver {
   /// 최근 측정 위치 (카메라 초기화용 캐시)
   Position? lastPosition;
 
+  // ── 백그라운드 위치 공유 (opt-in, Android 전용) ────────────────────────────
+  static const String _bgPrefKey = 'bg_location_enabled';
+  bool _bgEnabled = false;
+  StreamSubscription<Position>? _bgSub;
+
+  /// 현재 백그라운드 공유 ON 여부 (설정 토글 표시용)
+  bool get backgroundEnabled => _bgEnabled;
+
   bool get isRunning => _uid != null;
 
   /// 로그인 후 MainShell에서 호출 — 전역 추적 시작
@@ -56,6 +70,7 @@ class LocationTrackingService with WidgetsBindingObserver {
     _startBatteryMonitor();
     _scheduleTimer();
     updateNow(); // 즉시 1회 (권한 있으면)
+    _maybeStartBg(); // 저장된 설정이 ON이면 백그라운드 스트림 재개
   }
 
   /// 로그아웃·앱 종료 시 호출 — 추적 정지 + 리소스 정리
@@ -69,9 +84,70 @@ class LocationTrackingService with WidgetsBindingObserver {
     _accelSub = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
+    _stopBg(); // 백그라운드 스트림/포그라운드 서비스 종료 (로그아웃 시)
     _accelAccum = 0;
     _accelSamples = 0;
     _isMoving = false;
+  }
+
+  // ── 백그라운드 위치 공유 ───────────────────────────────────────────────────
+
+  /// 저장된 설정을 읽어 ON이면 백그라운드 스트림 재개 (start 시 호출)
+  Future<void> _maybeStartBg() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _bgEnabled = prefs.getBool(_bgPrefKey) ?? false;
+    } catch (_) {}
+    if (_bgEnabled) await _startBg();
+  }
+
+  /// 백그라운드 위치 공유 토글 (프로필 설정에서 호출).
+  /// 권한 요청·확인은 호출 측(설정 화면)에서 끝낸 뒤 on=true 로 켠다.
+  Future<void> setBackgroundEnabled(bool on) async {
+    _bgEnabled = on;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_bgPrefKey, on);
+    } catch (_) {}
+    if (on) {
+      await _startBg();
+    } else {
+      _stopBg();
+    }
+  }
+
+  /// 포그라운드 서비스 위치 스트림 구독 (Android). 각 업데이트 → Firestore 기록.
+  Future<void> _startBg() async {
+    if (kIsWeb) return; // 웹 미지원
+    if (_uid == null) return;
+    // 권한이 이미 허용된 경우에만 (설정 화면에서 요청 완료 후 켜짐)
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      return;
+    }
+    _bgSub?.cancel();
+    _bgSub =
+        Geolocator.getPositionStream(locationSettings: bgLocationSettings())
+            .listen((pos) {
+      lastPosition = pos;
+      final uid = _uid;
+      if (uid != null) {
+        // privacyMode=ice(잠수)면 updateLocation 내부에서 기록 skip
+        UserStatusService.updateLocation(
+          uid: uid,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          isMoving: _isMoving,
+          batteryLevel: _batteryLevel,
+        );
+      }
+    }, onError: (_) {});
+  }
+
+  void _stopBg() {
+    _bgSub?.cancel();
+    _bgSub = null;
   }
 
   /// 친구지도 진입/이탈 시 호출 — 활성 중엔 10초 고속 갱신

@@ -6,6 +6,11 @@
     <!-- GPS 위치 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- 백그라운드 위치 공유(opt-in) — 포그라운드 서비스 + 항상 허용 -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- 푸시 알림 (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 스토리지 (Android 12 이하) -->

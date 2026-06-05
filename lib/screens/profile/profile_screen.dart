@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +17,7 @@ import '../../screens/friends/friend_list_screen.dart';
 import '../../screens/vlog/vlog_player_swiper_screen.dart';
 import '../../services/firebase_storage_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/location_tracking_service.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/app_update_service.dart';
 import '../../utils/marker_emojis.dart';
@@ -300,6 +302,8 @@ class _UserView extends StatelessWidget {
               SliverToBoxAdapter(child: _LocationStatsCard(vlogs: vlogs)),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
               const SliverToBoxAdapter(child: _ThemeModeToggle()),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
+              const SliverToBoxAdapter(child: _BgLocationToggle()),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
               SliverToBoxAdapter(child: _SavedVlogsButton(uid: user.uid)),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xs)),
@@ -1651,6 +1655,113 @@ class _StatBlock extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── 백그라운드 위치 공유 토글 (opt-in, Android 전용) ──────────────────────────
+class _BgLocationToggle extends StatefulWidget {
+  const _BgLocationToggle();
+
+  @override
+  State<_BgLocationToggle> createState() => _BgLocationToggleState();
+}
+
+class _BgLocationToggleState extends State<_BgLocationToggle> {
+  bool _on = LocationTrackingService.instance.backgroundEnabled;
+  bool _busy = false;
+
+  Future<void> _toggle(bool want) async {
+    if (_busy) return;
+    if (!want) {
+      setState(() => _on = false);
+      await LocationTrackingService.instance.setBackgroundEnabled(false);
+      return;
+    }
+    // 켜기: prominent disclosure → 권한 → 활성화
+    final agreed = await _showDisclosure();
+    if (agreed != true) return;
+    setState(() => _busy = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('위치 권한이 필요해요. 설정에서 허용해 주세요.')));
+        if (perm == LocationPermission.deniedForever) {
+          await Geolocator.openAppSettings();
+        }
+        return;
+      }
+      await LocationTrackingService.instance.setBackgroundEnabled(true);
+      if (mounted) setState(() => _on = true);
+      // 포그라운드만 허용된 경우 '항상 허용' 권장
+      if (perm == LocationPermission.whileInUse && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("더 안정적인 공유를 위해 위치 권한을 '항상 허용'으로 바꿔주세요"),
+          duration: Duration(seconds: 4),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<bool?> _showDisclosure() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('백그라운드 위치 공유'),
+        content: const Text(
+          'PinFlick은 앱을 사용하지 않을 때(백그라운드)에도 친구에게 내 실시간 위치를 '
+          '공유하기 위해 위치 정보를 수집합니다.\n\n'
+          '• 켜져 있는 동안 "위치 공유 중" 알림이 계속 표시됩니다.\n'
+          '• 잠수 모드인 친구·관계에는 공유되지 않습니다.\n'
+          '• 언제든 이 설정에서 끌 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('동의하고 켜기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink(); // 웹 미지원
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        child: SwitchListTile(
+          value: _on,
+          onChanged: _busy ? null : _toggle,
+          activeThumbColor: AppColors.primary,
+          secondary: Icon(Icons.my_location,
+              color: _on ? AppColors.primary : cs.onSurfaceVariant),
+          title: const Text('백그라운드 위치 공유',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          subtitle: Text(
+            _on
+                ? '앱을 닫아도 친구에게 위치를 공유 중 (상시 알림)'
+                : '앱을 닫으면 위치 공유가 멈춰요. 켜면 계속 공유',
+            style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+          ),
+        ),
       ),
     );
   }
