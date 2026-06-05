@@ -1,6 +1,8 @@
 ﻿import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -257,6 +259,12 @@ class _MainShellState extends State<MainShell> {
   Future<void> _subscribeGlobalPings() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Crashlytics 에 사용자 식별자 부여 (베타 크래시 추적용, 웹 미지원)
+    if (!kIsWeb) {
+      try {
+        await FirebaseCrashlytics.instance.setUserIdentifier(user.uid);
+      } catch (_) {}
+    }
     try {
       await UserStatusService.ensureUserDoc(user);
     } catch (_) {}

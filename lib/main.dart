@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +32,22 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // ── 크래시 모니터링(Crashlytics) — Android 전용(웹 미지원) ──────────────────
+  if (!kIsWeb) {
+    try {
+      await FirebaseCrashlytics.instance
+          .setCrashlyticsCollectionEnabled(!kDebugMode);
+      // Flutter 프레임워크 에러 → Crashlytics
+      FlutterError.onError =
+          FirebaseCrashlytics.instance.recordFlutterFatalError;
+      // 비동기/엔진 레벨 에러 → Crashlytics
+      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+    } catch (_) {}
+  }
 
   // FCM 백그라운드/종료 상태 메시지 핸들러 등록 (runApp 이전)
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
