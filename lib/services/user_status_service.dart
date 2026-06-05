@@ -10,6 +10,13 @@ class UserStatusService {
   static final _db = FirebaseFirestore.instance;
   static final _users = _db.collection('users');
 
+  /// 백그라운드 위치 공유 ON/OFF 를 Firestore 에 저장 (서버 스케줄러가 읽음)
+  static Future<void> setBgLocationEnabled(String uid, bool enabled) async {
+    await _users
+        .doc(uid)
+        .set({'bgLocationEnabled': enabled}, SetOptions(merge: true));
+  }
+
   /// 모든 사용자의 라이브 정보 스트림 (위치 있는 사용자만)
   static Stream<List<LiveUser>> watchAllLiveUsers() {
     return _users

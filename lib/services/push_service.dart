@@ -1,12 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
+import '../firebase_options.dart';
 import '../screens/live_map/live_map_screen.dart';
 import '../screens/vlog/vlog_player_screen.dart';
 import '../services/firestore_service.dart';
+import '../services/user_status_service.dart';
 import '../utils/constants.dart';
 import '../widgets/notifications_sheet.dart';
 
@@ -20,6 +24,40 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('[Push] background message: ${message.messageId}');
+  // 위치 핑 — 서버 스케줄러가 깨운 경우: 백그라운드(앱 종료 포함)에서 위치 기록
+  if (message.data['type'] == 'loc_ping') {
+    await _handleLocPing(message.data);
+  }
+}
+
+/// FCM로 깨어난 백그라운드 isolate에서 현재 위치를 측정해 Firestore에 기록.
+/// 앱이 완전히 종료돼 있어도 OS가 이 핸들러를 실행한다(고우선순위 data 메시지).
+@pragma('vm:entry-point')
+Future<void> _handleLocPing(Map<String, dynamic> data) async {
+  try {
+    // 백그라운드 isolate — Firebase 재초기화 필요
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform);
+    }
+    final uid = data['uid'] as String?;
+    if (uid == null || uid.isEmpty) return;
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      return;
+    }
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 20)),
+    );
+    // privacyMode=ice(잠수)면 updateLocation 내부에서 기록 skip, fog면 마스킹
+    await UserStatusService.updateLocation(
+        uid: uid, lat: pos.latitude, lng: pos.longitude);
+    debugPrint('[Push] loc_ping → 위치 기록 완료 ($uid)');
+  } catch (e) {
+    debugPrint('[Push] loc_ping error: $e');
+  }
 }
 
 /// FCM 푸시 알림 서비스 (싱글톤)

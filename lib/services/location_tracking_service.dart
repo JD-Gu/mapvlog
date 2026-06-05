@@ -109,6 +109,13 @@ class LocationTrackingService with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_bgPrefKey, on);
     } catch (_) {}
+    // 서버 스케줄러(FCM 위치 핑)가 대상자를 알도록 Firestore 에도 저장
+    final uid = _uid;
+    if (uid != null) {
+      try {
+        await UserStatusService.setBgLocationEnabled(uid, on);
+      } catch (_) {}
+    }
     if (on) {
       await _startBg();
     } else {

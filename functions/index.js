@@ -218,3 +218,44 @@ exports.cleanupExpiredCheckins = onSchedule(
       logger.info("cleanupExpiredCheckins 삭제=" + n);
     },
 );
+
+// ── 5) 백그라운드 위치 핑 (앱 종료 상태에서도 위치 갱신 유도) ──────────────────
+// bgLocationEnabled=true 사용자 중 liveLocation 이 오래된(>3분) 사람에게
+// data-only 고우선순위 FCM 발송 → 앱 백그라운드 핸들러가 깨어나 위치를 기록.
+// (포그라운드/앱-생존 중인 사용자는 이미 최근 갱신이라 스킵 → 발송량 절약)
+exports.bgLocationPing = onSchedule(
+    "every 2 minutes",
+    async () => {
+      const snap = await db
+          .collection("users")
+          .where("bgLocationEnabled", "==", true)
+          .get();
+      if (snap.empty) return;
+      const now = Date.now();
+      const staleMs = 3 * 60 * 1000; // 3분 이상 안 올라온 사람만
+      let sent = 0;
+      for (const doc of snap.docs) {
+        const d = doc.data();
+        const last = d.liveLocation && d.liveLocation.updatedAt;
+        const lastMs = last && last.toMillis ? last.toMillis() : 0;
+        if (now - lastMs < staleMs) continue; // 최근 갱신됨 → 스킵
+        const uid = doc.id;
+        const tokenDocs = await getTokenDocs(uid);
+        const tokens = tokenDocs
+            .filter((t) => t.platform !== "web") // 웹은 백그라운드 위치 불가
+            .map((t) => t.token);
+        if (tokens.length === 0) continue;
+        try {
+          await messaging.sendEachForMulticast({
+            tokens,
+            data: {type: "loc_ping", uid},
+            android: {priority: "high"},
+          });
+          sent++;
+        } catch (e) {
+          logger.error("loc_ping 발송 실패 " + uid, e);
+        }
+      }
+      logger.info("bgLocationPing sent=" + sent);
+    },
+);
