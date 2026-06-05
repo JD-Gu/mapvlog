@@ -74,6 +74,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   LatLng? _pendingCameraLocation;
   /// 첫 GPS 이동을 1회만 수행하기 위한 가드
   bool _didInitialCameraMove = false;
+  /// 위치 권한 거부 / GPS 꺼짐 — 상단 안내 배너 표시용
+  bool _locationDenied = false;
+  bool _locationServiceOff = false;
   /// 포커스 체크인 카드 자동 표시를 1회만 하기 위한 가드
   bool _focusSheetShown = false;
   /// 고해상도 마커용 — 디바이스 픽셀 비율
@@ -155,10 +158,17 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
           perm == LocationPermission.deniedForever) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return; // 권한 없음
+      final denied = perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever;
+      // 위치 서비스(GPS) 자체가 꺼져 있어도 안내
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (mounted) {
+        setState(() {
+          _locationDenied = denied;
+          _locationServiceOff = !serviceOn;
+        });
       }
+      if (denied) return; // 권한 없음 → 배너로 안내
       final svc = LocationTrackingService.instance;
       // ① 마지막 위치를 먼저 반영 (콜드 GPS 대기 없이 즉시 표시)
       final last = await svc.lastKnown();
@@ -167,6 +177,24 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       final pos = await svc.updateNow();
       if (pos != null) _moveCameraTo(pos);
     } catch (_) {}
+  }
+
+  /// 위치 권한/서비스 문제 해결 — 설정 열기 또는 재요청
+  Future<void> _fixLocationAccess() async {
+    HapticFeedback.selectionClick();
+    if (_locationServiceOff) {
+      await Geolocator.openLocationSettings();
+    } else {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+      } else {
+        await Geolocator.requestPermission();
+      }
+    }
+    // 설정에서 돌아온 뒤 상태 재평가 (배너 갱신)
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (mounted) await _centerCameraOnMe();
   }
 
   /// 위치로 카메라 이동 (첫 진입 1회만). 지도 준비 전이면 pending에 저장.
@@ -858,6 +886,18 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             ),
           ),
 
+          // 위치 권한 거부 / GPS 꺼짐 안내 배너
+          if (_locationDenied || _locationServiceOff)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 110,
+              child: _LocationPermissionBanner(
+                serviceOff: _locationServiceOff,
+                onFix: _fixLocationAccess,
+              ),
+            ),
+
           // 그룹 필터 칩 (사용자가 그룹을 1개 이상 만든 경우에만 노출)
           if (_myGroups.isNotEmpty)
             Positioned(
@@ -1470,6 +1510,73 @@ class _RoundIconButton extends StatelessWidget {
           child: Icon(icon,
               color: color ?? Theme.of(context).colorScheme.onSurface,
               size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 위치 권한/서비스 안내 배너 ──────────────────────────────────────────────
+class _LocationPermissionBanner extends StatelessWidget {
+  final bool serviceOff;
+  final VoidCallback onFix;
+  const _LocationPermissionBanner(
+      {required this.serviceOff, required this.onFix});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = serviceOff
+        ? '기기 위치(GPS)가 꺼져 있어요'
+        : '위치 권한이 꺼져 있어요';
+    final body = serviceOff
+        ? '내 위치와 친구까지 거리를 보려면 위치를 켜주세요.'
+        : '내 위치 공유·거리 표시를 쓰려면 권한이 필요해요.';
+    return Material(
+      color: const Color(0xFF1A73E8),
+      borderRadius: BorderRadius.circular(16),
+      elevation: 6,
+      shadowColor: Colors.black.withAlpha(60),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        child: Row(
+          children: [
+            const Icon(Icons.location_off, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(body,
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 11.5,
+                          height: 1.3)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            TextButton(
+              onPressed: onFix,
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF1A73E8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+              child: Text(serviceOff ? '위치 켜기' : '설정 열기',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800)),
+            ),
+          ],
         ),
       ),
     );

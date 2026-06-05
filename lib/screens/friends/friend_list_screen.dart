@@ -11,6 +11,7 @@ import '../../services/firestore_service.dart';
 import '../../services/friend_group_service.dart';
 import '../../services/friend_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/invite.dart';
 import '../../utils/marker_emojis.dart';
 import '../../utils/sheets.dart';
 import 'friend_groups_screen.dart';
@@ -50,6 +51,11 @@ class _FriendListScreenState extends State<FriendListScreen>
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share, color: AppColors.primary),
+            tooltip: '친구 초대',
+            onPressed: AppInvite.share,
+          ),
           IconButton(
             icon: const Icon(Icons.group_work_outlined,
                 color: AppColors.primary),
@@ -214,7 +220,7 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
           return _EmptyState(
             icon: Icons.people_outline,
             title: '아직 친구가 없어요',
-            message: '이메일로 친구를 검색하고 요청해보세요',
+            message: '이메일로 친구를 검색하거나,\n링크로 친구를 초대해보세요',
             actionLabel: '친구 추가',
             onAction: () {
               Navigator.push(
@@ -223,6 +229,8 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
                     builder: (_) => const FriendSearchScreen()),
               );
             },
+            secondaryLabel: '친구 초대하기',
+            onSecondary: AppInvite.share,
           );
         }
 
@@ -1653,12 +1661,16 @@ class _EmptyState extends StatelessWidget {
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
   const _EmptyState({
     required this.icon,
     required this.title,
     required this.message,
     this.actionLabel,
     this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
   });
 
   @override
@@ -1706,6 +1718,16 @@ class _EmptyState extends StatelessWidget {
                       borderRadius:
                           BorderRadius.circular(AppRadius.full)),
                 ),
+              ),
+            ],
+            if (secondaryLabel != null && onSecondary != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onSecondary,
+                icon: const Icon(Icons.ios_share, size: 18),
+                label: Text(secondaryLabel!),
+                style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary),
               ),
             ],
           ],
