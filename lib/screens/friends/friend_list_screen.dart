@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/friend_group.dart';
 import '../../models/friendship.dart';
@@ -145,9 +146,13 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
   List<FriendGroup> _groups = [];
   StreamSubscription<List<FriendGroup>>? _groupsSub;
 
+  static const _hintKey = 'friend_group_longpress_hint_dismissed_v1';
+  bool _hintDismissed = true; // 기본 true → 로드 전 깜빡임 방지
+
   @override
   void initState() {
     super.initState();
+    _loadHint();
     _groupsSub = FriendGroupService.watchMyGroups().listen((g) {
       if (!mounted) return;
       setState(() {
@@ -158,6 +163,18 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
         }
       });
     });
+  }
+
+  Future<void> _loadHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dismissed = prefs.getBool(_hintKey) ?? false;
+    if (mounted) setState(() => _hintDismissed = dismissed);
+  }
+
+  Future<void> _dismissHint() async {
+    setState(() => _hintDismissed = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hintKey, true);
   }
 
   @override
@@ -285,6 +302,43 @@ class _AcceptedFriendsTabState extends State<_AcceptedFriendsTab> {
                   HapticFeedback.selectionClick();
                   setState(() => _groupFilter = id);
                 },
+              ),
+            // 멤버 편집 발견성 힌트 (그룹 있을 때 1회, 닫으면 다시 안 뜸)
+            if (_groups.isNotEmpty && !_hintDismissed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C4DFF).withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('💡', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          '그룹 칩을 길게 누르면 멤버를 편집할 수 있어요',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF7C4DFF),
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: _dismissHint,
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(Icons.close,
+                              size: 15, color: Color(0xFF7C4DFF)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             Expanded(
               child: sections.isEmpty
