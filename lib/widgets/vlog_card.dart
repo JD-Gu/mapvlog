@@ -401,6 +401,19 @@ class _VlogCardState extends State<VlogCard> with TickerProviderStateMixin {
                 ],
               ),
             ),
+            // 등록자 전용 ⋯ 메뉴 (수정/삭제) — 브이로그 카드와 동일
+            if (widget.onLongPress != null)
+              IconButton(
+                icon: const Icon(Icons.more_horiz,
+                    size: 20, color: AppColors.textSecondary),
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  widget.onLongPress?.call();
+                },
+              ),
           ],
         ),
             // ── 좋아요/댓글 액션 행 ───────────────────────────────────
