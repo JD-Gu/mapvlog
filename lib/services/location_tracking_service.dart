@@ -207,15 +207,15 @@ class LocationTrackingService with WidgetsBindingObserver {
   /// 현재 상태에 맞는 갱신 주기
   Duration _interval() {
     if (_appState == AppLifecycleState.resumed && _onLiveMap) {
-      return const Duration(seconds: 10); // 친구지도 활성(거의 실시간)
+      return const Duration(seconds: 5); // 친구지도 활성(거의 실시간)
     }
     if (_batteryLevel <= 15) {
-      return const Duration(minutes: 30); // 배터리 절전
+      return const Duration(minutes: 10); // 배터리 절전
     }
     if (_isMoving) {
-      return const Duration(minutes: 1); // 이동 중
+      return const Duration(seconds: 10); // 이동 중
     }
-    return const Duration(minutes: 5); // 앱 내 전역 기본(정지/다른 화면)
+    return const Duration(minutes: 1); // 앱 내 전역 기본(정지/다른 화면)
   }
 
   void _scheduleTimer() {

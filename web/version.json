@@ -1,5 +1,5 @@
 {
-  "version": "1.66.0",
-  "build": "109",
-  "notes": "\u2022 \uBC31\uADF8\uB77C\uC6B4\uB4DC \uC704\uCE58 \uAC1C\uC120 \u2014 \uC571\uC744 \uAEBC\uB3C4 FCM\uC73C\uB85C \uAE68\uC6CC \uB744\uC5C4\uB738 \uC704\uCE58 \uAC31\uC2E0(\uD504\uB85C\uD1A0\uD0C0\uC785)"
+  "version": "1.66.1",
+  "build": "110",
+  "notes": "• 위치 갱신 주기 조정 — 친구지도 5초 · 이동 10초 · 정지 1분 · 저배터리 10분"
 }
