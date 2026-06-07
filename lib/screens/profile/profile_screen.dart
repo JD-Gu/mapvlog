@@ -23,6 +23,7 @@ import '../../services/app_update_service.dart';
 import '../../utils/marker_emojis.dart';
 import '../../models/remote_version.dart';
 import '../../widgets/app_version_label.dart';
+import '../admin/event_admin_screen.dart';
 import '../legal/legal_screen.dart';
 import '../../services/web_cache_reload_stub.dart'
     if (dart.library.io) '../../services/web_cache_reload_io.dart'
@@ -330,6 +331,28 @@ class _UserView extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
                               AppRadius.md),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // 마스터 전용 — 이벤트 관리 (라이브 이벤트 맵)
+              if (user.email == 'jaduck9@gmail.com')
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                    child: OutlinedButton.icon(
+                      onPressed: () => EventAdminScreen.open(context),
+                      icon: const Icon(Icons.event, size: 16),
+                      label: const Text('🎪 이벤트 관리 (마스터)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: BorderSide(
+                            color: AppColors.primary.withValues(alpha: 0.4)),
+                        minimumSize: const Size(double.infinity, 42),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                     ),

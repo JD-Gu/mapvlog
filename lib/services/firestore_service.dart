@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/comment.dart';
+import '../models/event.dart';
 import '../models/gps_point.dart';
 import '../models/vlog.dart';
 
@@ -13,6 +14,66 @@ import '../models/vlog.dart';
 class FirestoreService {
   static final _db = FirebaseFirestore.instance;
   static final _vlogs = _db.collection('vlogs');
+  static final _events = _db.collection('events');
+
+  // ─── 이벤트 (라이브 이벤트 맵) ─────────────────────────────────────────────
+
+  /// 활성 이벤트 스트림. P1 은 전체 active 를 받아 클라이언트에서
+  /// 카테고리/기간/무료 필터 (데이터 적음, 복합 인덱스 불필요).
+  /// 종료된(endAt < now) 이벤트는 클라이언트에서도 숨김.
+  static Stream<List<PinEvent>> watchEvents() {
+    return _events.where('status', isEqualTo: 'active').snapshots().map((snap) {
+      final now = DateTime.now();
+      final list = snap.docs
+          .map(PinEvent.fromDoc)
+          .where((e) => e.endAt.isAfter(now))
+          .toList();
+      list.sort((a, b) => a.startAt.compareTo(b.startAt));
+      return list;
+    });
+  }
+
+  /// 내가(마스터) 등록한 이벤트 — 관리 화면용 (종료 포함, 최신 등록순)
+  static Stream<List<PinEvent>> watchMyEvents(String uid) {
+    return _events
+        .where('createdBy', isEqualTo: uid)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs.map(PinEvent.fromDoc).toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  static Future<PinEvent?> getEvent(String id) async {
+    final doc = await _events.doc(id).get();
+    if (!doc.exists) return null;
+    return PinEvent.fromDoc(doc);
+  }
+
+  /// 이벤트 생성 → 문서 ID 반환
+  static Future<String> createEvent(PinEvent e) async {
+    final ref = await _events.add({
+      ...e.toMap(),
+      'viewCount': 0,
+      'likeCount': 0,
+      'saveCount': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  static Future<void> updateEvent(String id, PinEvent e) async {
+    await _events.doc(id).update({
+      ...e.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<void> deleteEvent(String id) async {
+    await _events.doc(id).delete();
+  }
 
   // ─── 읽기 ─────────────────────────────────────────────────────────────────
 

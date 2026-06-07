@@ -83,6 +83,14 @@ service cloud.firestore {
                     && request.auth.uid == resource.data.uid;
     }
 
+    // ── events 컬렉션 (라이브 이벤트 맵) ──────────────────────────────────────
+    match /events/{eventId} {
+      // 공개 — 누구나 읽기 (이벤트는 공개 정보)
+      allow read: if true;
+      // 마스터만 등록·수정·삭제 (P2 크롤러는 Admin SDK 로 우회)
+      allow create, update, delete: if isMaster();
+    }
+
     // ── config 컬렉션 (앱 설정 — 신규 버전 정보 등) ──────────────────────────
     match /config/{configId} {
       // 모든 사용자(익명 포함) 읽기 — 앱 시작 시 버전 체크

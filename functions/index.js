@@ -259,3 +259,29 @@ exports.bgLocationPing = onSchedule(
       logger.info("bgLocationPing sent=" + sent);
     },
 );
+
+// ── 6) 종료된 이벤트 자동 숨김 (매시간) ──────────────────────────────────────
+// status=='active' 이벤트 중 endAt 이 지난 것을 status='ended' 로 변경(보존).
+// (active 만 조회 → 단일 필드 인덱스, 복합 불필요)
+exports.cleanupEndedEvents = onSchedule(
+    "every 60 minutes",
+    async () => {
+      const now = admin.firestore.Timestamp.now();
+      const snap = await db
+          .collection("events")
+          .where("status", "==", "active")
+          .get();
+      if (snap.empty) return;
+      let n = 0;
+      const batch = db.batch();
+      snap.docs.forEach((doc) => {
+        const endAt = doc.data().endAt;
+        if (endAt && endAt.toMillis && endAt.toMillis() < now.toMillis()) {
+          batch.update(doc.ref, {status: "ended", updatedAt: now});
+          n++;
+        }
+      });
+      if (n > 0) await batch.commit();
+      logger.info("cleanupEndedEvents ended=" + n);
+    },
+);
