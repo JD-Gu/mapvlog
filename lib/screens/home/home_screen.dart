@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../models/event.dart';
 import '../../models/friend_group.dart';
 import '../../models/vlog.dart';
 import '../../screens/auth/login_screen.dart';
@@ -27,6 +28,7 @@ import '../../widgets/check_in_sheet.dart';
 import '../../utils/sheets.dart';
 import '../../widgets/marquee_slogan.dart';
 import '../../widgets/notifications_sheet.dart';
+import '../../widgets/event_card.dart';
 import '../../widgets/visibility_picker.dart';
 import '../../widgets/vlog_card.dart';
 
@@ -44,7 +46,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 1 = 1열 가로 카드 (기본값), 2 = 2열 그리드
   int _crossAxisCount = 1;
   _SortMode _sortMode = _SortMode.byDate;
-  String? _categoryFilter; // null = 전체
+  String? _categoryFilter; // (구 POI 필터, 미사용 — 항상 null)
+  /// 이벤트 카테고리 필터. null = 전체(이벤트+일상), daily = 일상(친구 피드)
+  EventCategory? _eventFilter;
   _SortOrder _sortOrder = _SortOrder.desc; // 날짜 기본: 최신순
   Position? _position;
   /// 친구 UID 캐시 (피드 필터링용) — null이면 로딩 중
@@ -545,18 +549,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     _HomeCategoryChip(
                       label: '전체',
                       emoji: '🌐',
-                      selected: _categoryFilter == null,
-                      onTap: () => setState(() => _categoryFilter = null),
+                      selected: _eventFilter == null,
+                      onTap: () => setState(() => _eventFilter = null),
                     ),
                     const SizedBox(width: 6),
-                    ...MarkerEmojis.groups.map((g) => Padding(
+                    ...EventCategory.values.map((c) => Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: _HomeCategoryChip(
-                            label: g.name,
-                            emoji: g.hint,
-                            selected: _categoryFilter == g.name,
+                            label: c.label,
+                            emoji: c.emoji,
+                            selected: _eventFilter == c,
                             onTap: () =>
-                                setState(() => _categoryFilter = g.name),
+                                setState(() => _eventFilter = c),
                           ),
                         )),
                   ],
@@ -623,8 +627,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // ── 친구 + 본인 피드 스트림 (익명 보기 차단) ─────────────────
-            _buildFeedSliver(),
+            // ── 이벤트 섹션 (전체 또는 이벤트 카테고리 선택 시) ──────────
+            if (_eventFilter != EventCategory.daily) _buildEventsSliver(),
+            // ── 친구 + 본인 피드 (전체 또는 일상 선택 시) ────────────────
+            if (_eventFilter == null || _eventFilter == EventCategory.daily)
+              _buildFeedSliver(),
           ],
         ),
       ),
@@ -632,6 +639,54 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 친구 + 본인 피드 sliver — 비로그인 시 로그인 유도
+  /// 이벤트 카드 섹션 — 전체(이벤트+일상) 또는 이벤트 카테고리 선택 시.
+  Widget _buildEventsSliver() {
+    return StreamBuilder<List<PinEvent>>(
+      stream: FirestoreService.watchEvents(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
+        var events = snap.data ?? [];
+        if (_eventFilter != null && _eventFilter != EventCategory.daily) {
+          events = events.where((e) => e.category == _eventFilter).toList();
+        }
+        if (events.isEmpty) {
+          // 카테고리를 콕 집어 골랐는데 없으면 안내, 전체면 조용히(피드가 이어짐)
+          if (_eventFilter != null) {
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
+                child: Center(
+                  child: Text(
+                    '${_eventFilter!.emoji} 등록된 ${_eventFilter!.label} 이벤트가 없어요',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            );
+          }
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: EventCard(
+                    event: events[i], currentPosition: _position),
+              ),
+              childCount: events.length,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFeedSliver() {
     final me = FirebaseAuth.instance.currentUser;
     if (me == null) {
