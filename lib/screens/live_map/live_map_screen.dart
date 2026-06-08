@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../models/event.dart';
 import '../../models/friend_group.dart';
 import '../../models/friendship.dart';
 import '../../models/user_status.dart';
@@ -20,6 +21,7 @@ import '../../services/location_tracking_service.dart';
 import '../../services/user_status_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/comments_sheet.dart';
+import '../../widgets/event_card.dart';
 
 const _defaultCenter = LatLng(37.5665, 126.9780); // 서울 시청
 
@@ -64,6 +66,13 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   /// 최근 6시간 친구 체크인 — 지도에 자동 마커 표시
   List<Vlog> _recentCheckIns = [];
   StreamSubscription<List<Vlog>>? _recentCheckInsSub;
+
+  // ── 이벤트 모드 (라이브 이벤트 맵) ─────────────────────────────────────────
+  bool _eventMode = false; // false=친구, true=이벤트
+  List<PinEvent> _events = [];
+  StreamSubscription<List<PinEvent>>? _eventsSub;
+  EventCategory? _eventCatFilter; // null = 전체
+  double? _radiusKm = 10; // null = 전국
   // ping 구독은 MainShell에서 글로벌하게 처리 (라이브맵 밖에서도 알림 받음)
   // 위치 갱신(타이머·가속도·배터리·라이프사이클)은 LocationTrackingService가
   // 앱 전역에서 담당. 이 화면은 진입/이탈 시 setOnLiveMap()만 토글한다.
@@ -138,6 +147,13 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       if (!mounted) return;
       _myGroups = groups;
       await _rebuildMarkers();
+    });
+
+    // 4-3) 이벤트 구독 (이벤트 모드 마커)
+    _eventsSub = FirestoreService.watchEvents().listen((ev) {
+      if (!mounted) return;
+      _events = ev;
+      if (_eventMode) _rebuildMarkers();
     });
 
     // 4) 친구지도 활성 → 전역 추적 서비스에 10초 고속 갱신 요청
@@ -517,9 +533,129 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     }
   }
 
+  /// 이벤트 모드 — 카테고리 + 반경 필터를 통과한 이벤트
+  List<PinEvent> _eventsInView() {
+    final me = _myLatLng();
+    return _events.where((e) {
+      if (_eventCatFilter != null && e.category != _eventCatFilter) {
+        return false;
+      }
+      if (_radiusKm != null && me != null) {
+        final m = Geolocator.distanceBetween(me.lat, me.lng, e.lat, e.lng);
+        if (m > _radiusKm! * 1000) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _showEventSheet(PinEvent e) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: SingleChildScrollView(
+            child: EventCard(
+                event: e,
+                currentPosition: LocationTrackingService.instance.lastPosition),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 이벤트 모드 필터 바 — 카테고리(전체+4종) + 반경(3·10·30·전국)
+  Widget _buildEventFilterBar() {
+    final cats = <EventCategory?>[null, ...EventCategory.adminCategories];
+    const radii = <double?>[3, 10, 30, null];
+    void rebuild() {
+      HapticFeedback.selectionClick();
+      _rebuildMarkers();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              for (final c in cats) ...[
+                _GroupFilterChip(
+                  label: c?.label ?? '전체',
+                  emoji: c?.emoji ?? '🎪',
+                  selected: _eventCatFilter == c,
+                  onTap: () {
+                    setState(() => _eventCatFilter = c);
+                    rebuild();
+                  },
+                ),
+                const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 32,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              for (final r in radii) ...[
+                _GroupFilterChip(
+                  label: r == null ? '전국' : '${r.toInt()}km',
+                  emoji: '📍',
+                  selected: _radiusKm == r,
+                  onTap: () {
+                    setState(() => _radiusKm = r);
+                    rebuild();
+                  },
+                ),
+                const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _rebuildMarkers() async {
     final markers = <Marker>{};
     final circles = <Circle>{};
+
+    // 이벤트 모드 — 친구/체크인 대신 이벤트 마커만
+    if (_eventMode) {
+      for (final e in _eventsInView()) {
+        final dist = _distanceTo(e.lat, e.lng);
+        final subtitle =
+            dist != null ? '${e.statusBadge()} · $dist' : e.statusBadge();
+        final em =
+            await _checkInMarkerBitmap(e.category.emoji, subtitle: subtitle);
+        markers.add(Marker(
+          markerId: MarkerId('event_${e.id}'),
+          position: LatLng(e.lat, e.lng),
+          icon: em.icon,
+          anchor: Offset(0.5, em.anchorY),
+          zIndexInt: 60,
+          onTap: () => _showEventSheet(e),
+        ));
+      }
+      if (mounted) {
+        setState(() {
+          _markers = markers;
+          _circles = circles;
+        });
+      }
+      return;
+    }
 
     // 활성 그룹 필터 — 선택된 그룹의 멤버 UID 집합
     Set<String>? filterUids;
@@ -820,6 +956,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     _recentCheckInsSub?.cancel();
     _myPingsSub?.cancel();
     _groupsSub?.cancel();
+    _eventsSub?.cancel();
     for (final sub in _theirViewSubs.values) {
       sub.cancel();
     }
@@ -870,18 +1007,27 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             },
           ),
 
-          // 상단: 뒤로가기 + 사용자 수 칩
+          // 상단: 모드 토글 [친구 | 이벤트] + 사용자 수 칩
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 12,
             right: 12,
             child: Row(
               children: [
-                const Spacer(),
-                _CountChip(
-                  count: _liveFriends().length,
-                  onTap: () => _showLiveFriendsSheet(),
+                _MapModeToggle(
+                  eventMode: _eventMode,
+                  onChanged: (ev) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _eventMode = ev);
+                    _rebuildMarkers();
+                  },
                 ),
+                const Spacer(),
+                if (!_eventMode)
+                  _CountChip(
+                    count: _liveFriends().length,
+                    onTap: () => _showLiveFriendsSheet(),
+                  ),
               ],
             ),
           ),
@@ -898,8 +1044,17 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
               ),
             ),
 
-          // 그룹 필터 칩 (사용자가 그룹을 1개 이상 만든 경우에만 노출)
-          if (_myGroups.isNotEmpty)
+          // 이벤트 필터 바 (이벤트 모드 — 카테고리 + 반경)
+          if (_eventMode)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 62,
+              left: 0,
+              right: 0,
+              child: _buildEventFilterBar(),
+            ),
+
+          // 그룹 필터 칩 (친구 모드 + 그룹이 1개 이상일 때만)
+          if (!_eventMode && _myGroups.isNotEmpty)
             Positioned(
               top: MediaQuery.of(context).padding.top + 62,
               left: 0,
@@ -1578,6 +1733,55 @@ class _LocationPermissionBanner extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── 친구 | 이벤트 모드 토글 ─────────────────────────────────────────────────
+class _MapModeToggle extends StatelessWidget {
+  final bool eventMode;
+  final ValueChanged<bool> onChanged;
+  const _MapModeToggle({required this.eventMode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      borderRadius: BorderRadius.circular(AppRadius.full),
+      elevation: 3,
+      shadowColor: Colors.black.withAlpha(40),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _seg(context, '👥 친구', !eventMode, () => onChanged(false)),
+            _seg(context, '🎪 이벤트', eventMode, () => onChanged(true)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _seg(
+      BuildContext context, String label, bool sel, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: sel ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: sel ? Colors.white : cs.onSurfaceVariant)),
       ),
     );
   }
