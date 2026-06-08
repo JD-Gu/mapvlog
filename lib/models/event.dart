@@ -8,6 +8,7 @@ enum EventCategory {
   culture,
   festival,
   public,
+  education,
   daily;
 
   String get value => name;
@@ -16,7 +17,8 @@ enum EventCategory {
         EventCategory.sports => '스포츠/레저',
         EventCategory.culture => '공연/전시',
         EventCategory.festival => '축제/바자회',
-        EventCategory.public => '기업/지자체',
+        EventCategory.public => '기업/브랜드',
+        EventCategory.education => '교육/클래스',
         EventCategory.daily => '일상',
       };
 
@@ -24,7 +26,8 @@ enum EventCategory {
         EventCategory.sports => '🏆',
         EventCategory.culture => '🎭',
         EventCategory.festival => '🎪',
-        EventCategory.public => '🏛️',
+        EventCategory.public => '🏢',
+        EventCategory.education => '🎓',
         EventCategory.daily => '🍿',
       };
 
@@ -33,6 +36,7 @@ enum EventCategory {
         EventCategory.culture => const Color(0xFFEC407A),
         EventCategory.festival => const Color(0xFFFFA726),
         EventCategory.public => const Color(0xFF26A69A),
+        EventCategory.education => const Color(0xFF43A047),
         EventCategory.daily => const Color(0xFF7C4DFF),
       };
 
@@ -41,6 +45,7 @@ enum EventCategory {
         'culture' => EventCategory.culture,
         'festival' => EventCategory.festival,
         'public' => EventCategory.public,
+        'education' => EventCategory.education,
         _ => EventCategory.daily,
       };
 
@@ -50,6 +55,7 @@ enum EventCategory {
     culture,
     festival,
     public,
+    education,
   ];
 }
 
