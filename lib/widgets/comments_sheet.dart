@@ -13,18 +13,41 @@ import '../utils/constants.dart';
 import '../utils/sheets.dart';
 import 'likers_sheet.dart';
 
-/// 인스타 스타일 댓글 시트 (드래그 가능 + 입력창 하단 고정)
+/// 인스타 스타일 댓글 시트 (드래그 가능 + 입력창 하단 고정).
+/// vlogs/events 등 임의 컬렉션 문서에 재사용 — collection/docId/ownerId 기반.
 class CommentsSheet extends StatelessWidget {
-  final Vlog vlog;
-  const CommentsSheet({super.key, required this.vlog});
+  final String collection; // 'vlogs' | 'events' ...
+  final String docId;
+  final String ownerId; // 등록자(삭제 권한) UID
+  const CommentsSheet({
+    super.key,
+    required this.collection,
+    required this.docId,
+    required this.ownerId,
+  });
 
-  static Future<void> open(BuildContext context, Vlog vlog) {
+  /// 브이로그 댓글 (기존 호환)
+  static Future<void> open(BuildContext context, Vlog vlog) => _show(context,
+      collection: 'vlogs', docId: vlog.id, ownerId: vlog.authorId);
+
+  /// 임의 문서(이벤트 등) 댓글
+  static Future<void> openFor(BuildContext context,
+          {required String collection,
+          required String docId,
+          required String ownerId}) =>
+      _show(context, collection: collection, docId: docId, ownerId: ownerId);
+
+  static Future<void> _show(BuildContext context,
+      {required String collection,
+      required String docId,
+      required String ownerId}) {
     HapticFeedback.selectionClick();
     return showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => CommentsSheet(vlog: vlog),
+      builder: (_) => CommentsSheet(
+          collection: collection, docId: docId, ownerId: ownerId),
     );
   }
 
@@ -36,7 +59,9 @@ class CommentsSheet extends StatelessWidget {
       minChildSize: 0.4,
       maxChildSize: 0.95,
       builder: (_, scrollCtrl) => _CommentsView(
-        vlog: vlog,
+        collection: collection,
+        docId: docId,
+        ownerId: ownerId,
         scrollCtrl: scrollCtrl,
       ),
     );
@@ -44,9 +69,16 @@ class CommentsSheet extends StatelessWidget {
 }
 
 class _CommentsView extends StatefulWidget {
-  final Vlog vlog;
+  final String collection;
+  final String docId;
+  final String ownerId;
   final ScrollController scrollCtrl;
-  const _CommentsView({required this.vlog, required this.scrollCtrl});
+  const _CommentsView({
+    required this.collection,
+    required this.docId,
+    required this.ownerId,
+    required this.scrollCtrl,
+  });
 
   @override
   State<_CommentsView> createState() => _CommentsViewState();
@@ -209,7 +241,8 @@ class _CommentsViewState extends State<_CommentsView> {
         : (_replyingTo!.parentId ?? _replyingTo!.id);
     try {
       await FirestoreService.addComment(
-        vlogId: widget.vlog.id,
+        vlogId: widget.docId,
+        collection: widget.collection,
         authorId: user.uid,
         authorName: user.displayName ?? user.email ?? '익명',
         authorPhotoUrl: user.photoURL,
@@ -349,7 +382,8 @@ class _CommentsViewState extends State<_CommentsView> {
           // 댓글 리스트
           Expanded(
             child: StreamBuilder<List<Comment>>(
-              stream: FirestoreService.watchComments(widget.vlog.id),
+              stream: FirestoreService.watchComments(widget.docId,
+                  collection: widget.collection),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(
@@ -372,7 +406,9 @@ class _CommentsViewState extends State<_CommentsView> {
                       case _RowKind.reply:
                         return _CommentTile(
                           comment: row.comment!,
-                          vlog: widget.vlog,
+                          collection: widget.collection,
+                          docId: widget.docId,
+                          ownerId: widget.ownerId,
                           myUid: myUid,
                           isReply: row.kind == _RowKind.reply,
                           onReply: myUid == null
@@ -527,13 +563,17 @@ class _ReplyToggle extends StatelessWidget {
 
 class _CommentTile extends StatefulWidget {
   final Comment comment;
-  final Vlog vlog;
+  final String collection;
+  final String docId;
+  final String ownerId;
   final String? myUid;
   final bool isReply;
   final VoidCallback? onReply;
   const _CommentTile({
     required this.comment,
-    required this.vlog,
+    required this.collection,
+    required this.docId,
+    required this.ownerId,
     required this.myUid,
     this.isReply = false,
     this.onReply,
@@ -573,7 +613,8 @@ class _CommentTileState extends State<_CommentTile> {
     }
     try {
       final liked = await FirestoreService.isCommentLikedByMe(
-        vlogId: widget.vlog.id,
+        vlogId: widget.docId,
+        collection: widget.collection,
         commentId: widget.comment.id,
         userId: widget.myUid!,
       );
@@ -606,7 +647,8 @@ class _CommentTileState extends State<_CommentTile> {
     });
     try {
       await FirestoreService.toggleCommentLike(
-        vlogId: widget.vlog.id,
+        vlogId: widget.docId,
+        collection: widget.collection,
         commentId: widget.comment.id,
         userId: widget.myUid!,
       );
@@ -625,7 +667,7 @@ class _CommentTileState extends State<_CommentTile> {
   bool get _canDelete =>
       widget.myUid != null &&
       (widget.myUid == widget.comment.authorId ||
-          widget.myUid == widget.vlog.authorId);
+          widget.myUid == widget.ownerId);
 
   /// 본문에서 @로 시작하는 토큰을 컬러 span으로 분리
   /// 예: "안녕 @방랑자 잘 지내?" → ["안녕 ", "@방랑자", " 잘 지내?"]
@@ -674,7 +716,8 @@ class _CommentTileState extends State<_CommentTile> {
     );
     if (ok != true) return;
     try {
-      await FirestoreService.deleteComment(widget.vlog.id, widget.comment.id);
+      await FirestoreService.deleteComment(widget.docId, widget.comment.id,
+          collection: widget.collection);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -781,7 +824,8 @@ class _CommentTileState extends State<_CommentTile> {
                           title: '좋아요 $_likeCount명',
                           stream:
                               FirestoreService.watchCommentLikers(
-                                  widget.vlog.id, widget.comment.id),
+                                  widget.docId, widget.comment.id,
+                                  collection: widget.collection),
                         ),
                         child: Text(
                           '좋아요 $_likeCount개',

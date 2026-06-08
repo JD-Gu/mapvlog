@@ -111,7 +111,8 @@ service cloud.firestore {
                     || (request.auth != null
                         && request.resource.data.diff(resource.data)
                            .affectedKeys()
-                           .hasOnly(['likeCount', 'saveCount', 'viewCount']));
+                           .hasOnly(['likeCount', 'saveCount', 'viewCount',
+                                     'commentCount']));
 
       // 좋아요 서브컬렉션 (본인 doc만 생성/삭제)
       match /likes/{userId} {
@@ -120,6 +121,28 @@ service cloud.firestore {
                               && request.auth.uid == userId;
       }
       // 저장(saves)은 최상위 재귀 /{path=**}/saves 규칙으로 인가 (uid 필드 기준)
+
+      // ── 이벤트 댓글 ───────────────────────────────────────────────────
+      match /comments/{commentId} {
+        allow read: if true;
+        // 작성자 본인만 생성
+        allow create: if request.auth != null
+                      && request.auth.uid == request.resource.data.authorId;
+        // 작성자 본인 / 이벤트 등록자 / 마스터 삭제
+        allow delete: if isMaster()
+                      || (request.auth != null
+                          && (request.auth.uid == resource.data.authorId
+                              || request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.createdBy));
+        // likeCount 토글만 update 허용
+        allow update: if request.auth != null
+                      && request.resource.data.diff(resource.data)
+                         .affectedKeys().hasOnly(['likeCount']);
+        match /likes/{userId} {
+          allow read: if true;
+          allow create, delete: if request.auth != null
+                                && request.auth.uid == userId;
+        }
+      }
     }
 
     // ── config 컬렉션 (앱 설정 — 신규 버전 정보 등) ──────────────────────────

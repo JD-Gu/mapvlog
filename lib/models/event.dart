@@ -86,6 +86,7 @@ class PinEvent {
   final int viewCount;
   final int likeCount;
   final int saveCount;
+  final int commentCount;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -111,6 +112,7 @@ class PinEvent {
     this.viewCount = 0,
     this.likeCount = 0,
     this.saveCount = 0,
+    this.commentCount = 0,
     required this.createdAt,
     this.updatedAt,
   });
@@ -165,6 +167,7 @@ class PinEvent {
       viewCount: (d['viewCount'] as num?)?.toInt() ?? 0,
       likeCount: (d['likeCount'] as num?)?.toInt() ?? 0,
       saveCount: (d['saveCount'] as num?)?.toInt() ?? 0,
+      commentCount: (d['commentCount'] as num?)?.toInt() ?? 0,
       createdAt: ts(d['createdAt']),
       updatedAt: d['updatedAt'] is Timestamp
           ? (d['updatedAt'] as Timestamp).toDate()

@@ -252,6 +252,19 @@ class PushService {
           debugPrint('[Push] comment nav error: $e');
         }
         break;
+      case 'eventComment':
+        final eventId = data['eventId'] as String?;
+        if (eventId == null || eventId.isEmpty) return;
+        try {
+          final ev = await FirestoreService.getEvent(eventId);
+          if (ev != null) {
+            nav.push(MaterialPageRoute(
+                builder: (_) => LiveMapScreen(focusEvent: ev)));
+          }
+        } catch (e) {
+          debugPrint('[Push] eventComment nav error: $e');
+        }
+        break;
     }
   }
 }

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/event.dart';
 import '../services/firestore_service.dart';
 import '../utils/constants.dart';
+import 'comments_sheet.dart';
 import 'map_launcher_sheet.dart';
 
 /// 라이브 이벤트 카드 — 포스터 + 카테고리/비용칩 + 제목 + 일정 + 상태배지 +
@@ -34,6 +35,7 @@ class _EventCardState extends State<EventCard> {
   bool _saved = false;
   late int _likeCount;
   late int _saveCount;
+  late int _commentCount;
 
   PinEvent get _e => widget.event;
 
@@ -43,6 +45,7 @@ class _EventCardState extends State<EventCard> {
     _uid = FirebaseAuth.instance.currentUser?.uid;
     _likeCount = _e.likeCount;
     _saveCount = _e.saveCount;
+    _commentCount = _e.commentCount;
     // 조회수 +1 (세션당 1회)
     if (!_viewedSession.contains(_e.id)) {
       _viewedSession.add(_e.id);
@@ -127,6 +130,22 @@ class _EventCardState extends State<EventCard> {
         '${_e.link != null && _e.link!.isNotEmpty ? '\n🔗 ${_e.link}' : ''}'
         '\n\nPinFlick에서 보기 👇\n$url';
     await Share.share(text, subject: _e.title);
+  }
+
+  Future<void> _openComments() async {
+    await CommentsSheet.openFor(
+      context,
+      collection: 'events',
+      docId: _e.id,
+      ownerId: _e.createdBy,
+    );
+    // 시트 닫힌 뒤 댓글 수 동기화
+    try {
+      final fresh = await FirestoreService.getEvent(_e.id);
+      if (mounted && fresh != null) {
+        setState(() => _commentCount = fresh.commentCount);
+      }
+    } catch (_) {}
   }
 
   Future<void> _openLink() async {
@@ -287,6 +306,13 @@ class _EventCardState extends State<EventCard> {
                       _saved ? const Color(0xFFFFC107) : cs.onSurfaceVariant,
                       _saveCount > 0 ? '$_saveCount' : '저장',
                       _toggleSave,
+                    ),
+                    const SizedBox(width: 4),
+                    _statBtn(
+                      Icons.mode_comment_outlined,
+                      cs.onSurfaceVariant,
+                      _commentCount > 0 ? '$_commentCount' : '댓글',
+                      _openComments,
                     ),
                     const SizedBox(width: 4),
                     _statBtn(Icons.ios_share, cs.onSurfaceVariant, '공유',

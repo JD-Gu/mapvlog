@@ -430,8 +430,10 @@ class FirestoreService {
 
   /// 댓글 좋아요 — 동일 패턴
   static Stream<List<Map<String, dynamic>>> watchCommentLikers(
-      String vlogId, String commentId) async* {
-    final likesStream = _vlogs
+      String vlogId, String commentId,
+      {String collection = 'vlogs'}) async* {
+    final likesStream = _db
+        .collection(collection)
         .doc(vlogId)
         .collection('comments')
         .doc(commentId)
@@ -518,8 +520,10 @@ class FirestoreService {
   // ─── 댓글 ─────────────────────────────────────────────────────────────────
 
   /// 댓글 스트림 (오래된→최신, 인스타 스타일)
-  static Stream<List<Comment>> watchComments(String vlogId) {
-    return _vlogs
+  static Stream<List<Comment>> watchComments(String vlogId,
+      {String collection = 'vlogs'}) {
+    return _db
+        .collection(collection)
         .doc(vlogId)
         .collection('comments')
         .orderBy('createdAt', descending: false)
@@ -538,8 +542,10 @@ class FirestoreService {
     String? authorPhotoUrl,
     required String content,
     String? parentId,
+    String collection = 'vlogs',
   }) async {
-    final ref = _vlogs.doc(vlogId).collection('comments').doc();
+    final ref =
+        _db.collection(collection).doc(vlogId).collection('comments').doc();
     await ref.set({
       'id': ref.id,
       'authorId': authorId,
@@ -551,22 +557,30 @@ class FirestoreService {
       'likeCount': 0,
       if (parentId != null && parentId.isNotEmpty) 'parentId': parentId,
     });
-    await _vlogs.doc(vlogId).update({
+    await _db.collection(collection).doc(vlogId).update({
       'commentCount': FieldValue.increment(1),
     });
   }
 
-  /// 댓글 삭제 (작성자/마스터/vlog 등록자)
-  static Future<void> deleteComment(String vlogId, String commentId) async {
-    await _vlogs.doc(vlogId).collection('comments').doc(commentId).delete();
-    await _vlogs.doc(vlogId).update({
+  /// 댓글 삭제 (작성자/마스터/등록자)
+  static Future<void> deleteComment(String vlogId, String commentId,
+      {String collection = 'vlogs'}) async {
+    await _db
+        .collection(collection)
+        .doc(vlogId)
+        .collection('comments')
+        .doc(commentId)
+        .delete();
+    await _db.collection(collection).doc(vlogId).update({
       'commentCount': FieldValue.increment(-1),
     });
   }
 
-  /// 가장 최신 댓글 1개 (없으면 null) — VlogCard 미리보기용
-  static Future<Comment?> getLatestComment(String vlogId) async {
-    final snap = await _vlogs
+  /// 가장 최신 댓글 1개 (없으면 null) — 카드 미리보기용
+  static Future<Comment?> getLatestComment(String vlogId,
+      {String collection = 'vlogs'}) async {
+    final snap = await _db
+        .collection(collection)
         .doc(vlogId)
         .collection('comments')
         .orderBy('createdAt', descending: true)
@@ -582,9 +596,13 @@ class FirestoreService {
     required String vlogId,
     required String commentId,
     required String userId,
+    String collection = 'vlogs',
   }) async {
-    final commentRef =
-        _vlogs.doc(vlogId).collection('comments').doc(commentId);
+    final commentRef = _db
+        .collection(collection)
+        .doc(vlogId)
+        .collection('comments')
+        .doc(commentId);
     final likeRef = commentRef.collection('likes').doc(userId);
     final snap = await likeRef.get();
     if (snap.exists) {
@@ -604,8 +622,10 @@ class FirestoreService {
     required String vlogId,
     required String commentId,
     required String userId,
+    String collection = 'vlogs',
   }) async {
-    final doc = await _vlogs
+    final doc = await _db
+        .collection(collection)
         .doc(vlogId)
         .collection('comments')
         .doc(commentId)

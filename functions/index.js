@@ -189,6 +189,62 @@ exports.onCommentCreated = onDocumentCreated(
     },
 );
 
+// ── 3-b) 이벤트 댓글 → 이벤트 등록자 + 스레드 참여자에게 푸시 ────────────────
+exports.onEventCommentCreated = onDocumentCreated(
+    "events/{eventId}/comments/{commentId}",
+    async (event) => {
+      const eventId = event.params.eventId;
+      const c = event.data && event.data.data();
+      if (!c) return;
+
+      const commenter = c.authorId;
+      const commenterName = c.authorName || "누군가";
+      const content = c.content || "";
+      const isReply = !!c.parentId;
+
+      const evSnap = await db.collection("events").doc(eventId).get();
+      if (!evSnap.exists) return;
+      const ev = evSnap.data();
+
+      const recipients = new Set();
+
+      // 답글이면 같은 스레드(부모 댓글) 참여자 전원에게 알림
+      if (c.parentId) {
+        const parentSnap = await db
+            .collection("events").doc(eventId)
+            .collection("comments").doc(c.parentId).get();
+        if (parentSnap.exists) {
+          const pa = parentSnap.data().authorId;
+          if (pa) recipients.add(pa);
+        }
+        const siblings = await db
+            .collection("events").doc(eventId)
+            .collection("comments")
+            .where("parentId", "==", c.parentId)
+            .get();
+        siblings.forEach((d) => {
+          const a = d.data().authorId;
+          if (a) recipients.add(a);
+        });
+      }
+      // 이벤트 등록자 (항상)
+      if (ev.createdBy) recipients.add(ev.createdBy);
+      // 본인 제외
+      recipients.delete(commenter);
+
+      const evTitle = ev.title || "이벤트";
+      await Promise.all([...recipients].map((uid) => sendToUser(uid, {
+        type: "eventComment",
+        title: isReply ?
+          `💬 ${commenterName}님의 답글` :
+          `💬 ${commenterName}님의 댓글`,
+        body: `[${evTitle}] ${content}`,
+        emoji: "💬",
+        eventId,
+      })));
+    },
+);
+
 // ── 4) 만료된 체크인 자동 삭제 (매시간) ──────────────────────────────────────
 // expiresAt 이 지난 체크인 vlog 를 하위 댓글·좋아요·저장과 함께 삭제.
 exports.cleanupExpiredCheckins = onSchedule(
