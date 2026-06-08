@@ -17,6 +17,57 @@ class UserStatusService {
         .set({'bgLocationEnabled': enabled}, SetOptions(merge: true));
   }
 
+  // ── 이벤트 역할 (Event Master) ─────────────────────────────────────────────
+
+  /// 이벤트 역할 + 담당 카테고리 스트림. role='' (없음) | 'event' | 'super'
+  static Stream<({String role, List<String> cats})> watchEventRole(
+      String uid) {
+    return _users.doc(uid).snapshots().map((d) {
+      final m = d.data() ?? <String, dynamic>{};
+      return (
+        role: (m['eventRole'] as String?) ?? '',
+        cats: ((m['eventCategories'] as List<dynamic>?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+    });
+  }
+
+  static Future<({String role, List<String> cats})> getEventRole(
+      String uid) async {
+    final d = await _users.doc(uid).get();
+    final m = d.data() as Map<String, dynamic>? ?? {};
+    return (
+      role: (m['eventRole'] as String?) ?? '',
+      cats: ((m['eventCategories'] as List<dynamic>?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+    );
+  }
+
+  /// 현재 이벤트 마스터 목록 (Super 관리 화면용)
+  static Stream<List<Map<String, dynamic>>> watchEventMasters() {
+    return _users
+        .where('eventRole', isEqualTo: 'event')
+        .snapshots()
+        .map((s) => s.docs.map((d) => {'uid': d.id, ...d.data()}).toList());
+  }
+
+  /// Super 가 Event Master 임명/해제 (categories: ['all'] 또는 카테고리 코드들)
+  static Future<void> setEventMaster(String uid,
+      {required bool enabled, List<String> categories = const []}) async {
+    if (enabled) {
+      await _users.doc(uid).set(
+          {'eventRole': 'event', 'eventCategories': categories},
+          SetOptions(merge: true));
+    } else {
+      await _users.doc(uid).set({
+        'eventRole': FieldValue.delete(),
+        'eventCategories': FieldValue.delete(),
+      }, SetOptions(merge: true));
+    }
+  }
+
   /// 모든 사용자의 라이브 정보 스트림 (위치 있는 사용자만)
   static Stream<List<LiveUser>> watchAllLiveUsers() {
     return _users

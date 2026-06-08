@@ -2,10 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── 마스터 권한 (jaduck9@gmail.com) ────────────────────────────────────
+    // ── 최고 관리자(Super Master) 권한 (jaduck9) ──────────────────────────
     function isMaster() {
       return request.auth != null
           && request.auth.uid == 'pNBOyNLJjVdgUYuGNwCWz8s3x0z1';
+    }
+
+    // ── 이벤트 마스터(Event Master) — users 문서 eventRole/eventCategories ──
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isEventMasterFor(cat) {
+      return request.auth != null
+          && userDoc().eventRole == 'event'
+          && (userDoc().eventCategories.hasAny(['all'])
+              || userDoc().eventCategories.hasAny([cat]));
     }
 
     // ── vlogs 컬렉션 ────────────────────────────────────────────────────────
@@ -87,10 +98,16 @@ service cloud.firestore {
     match /events/{eventId} {
       // 공개 — 누구나 읽기 (이벤트는 공개 정보)
       allow read: if true;
-      // 마스터만 등록·삭제 (P2 크롤러는 Admin SDK 로 우회)
-      allow create, delete: if isMaster();
-      // 마스터는 전체 수정, 일반 사용자는 카운트 필드만 (좋아요·저장·조회수 토글)
+      // Super Master 전체 / Event Master 는 담당 카테고리만 등록·삭제
+      allow create: if isMaster()
+                    || isEventMasterFor(request.resource.data.category);
+      allow delete: if isMaster()
+                    || isEventMasterFor(resource.data.category);
+      // 수정: Super 전체 / Event Master 는 (구·신 카테고리 모두 담당일 때) /
+      //       일반 사용자는 카운트 필드만 (좋아요·저장·조회수)
       allow update: if isMaster()
+                    || (isEventMasterFor(resource.data.category)
+                        && isEventMasterFor(request.resource.data.category))
                     || (request.auth != null
                         && request.resource.data.diff(resource.data)
                            .affectedKeys()
@@ -118,10 +135,20 @@ service cloud.firestore {
       // 익명 포함 누구나 읽기
       allow read: if true;
 
-      // 마스터 또는 본인 프로필만 생성·수정
-      allow create, update: if isMaster()
-                            || (request.auth != null
-                                && request.auth.uid == userId);
+      // 마스터 또는 본인 프로필만 생성·수정.
+      // ⚠️ eventRole/eventCategories(역할)는 Super Master 만 변경 가능 —
+      //    일반 사용자가 자기 doc 에 스스로 역할을 부여하지 못하게 차단.
+      allow create: if isMaster()
+                    || (request.auth != null
+                        && request.auth.uid == userId
+                        && !request.resource.data.keys()
+                            .hasAny(['eventRole', 'eventCategories']));
+      allow update: if isMaster()
+                    || (request.auth != null
+                        && request.auth.uid == userId
+                        && !request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasAny(['eventRole', 'eventCategories']));
 
       // 마스터만 삭제 가능 (일반 사용자 삭제 불가)
       allow delete: if isMaster();

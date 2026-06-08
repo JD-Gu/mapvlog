@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/event.dart';
 import '../../services/firestore_service.dart';
+import '../../services/user_status_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/event_permission.dart';
 import 'event_edit_screen.dart';
 
-/// 마스터 전용 — 내가 등록한 이벤트 관리(목록·수정·삭제·추가).
+/// 이벤트 관리(목록·수정·삭제·추가) — Super=전체 / Event Master=담당 카테고리.
 class EventAdminScreen extends StatelessWidget {
   const EventAdminScreen({super.key});
 
@@ -26,15 +28,35 @@ class EventAdminScreen extends StatelessWidget {
         title: const Text('이벤트 관리'),
         backgroundColor: cs.surface,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => EventEditScreen.open(context),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('새 이벤트'),
+      body: StreamBuilder<({String role, List<String> cats})>(
+        stream: UserStatusService.watchEventRole(uid),
+        builder: (context, roleSnap) {
+          final role = roleSnap.data?.role ?? '';
+          final cats = roleSnap.data?.cats ?? const <String>[];
+          final allowed = EventPermission.allowedCategories(role, cats);
+          final isSuper = EventPermission.isSuper;
+          return _buildBody(context, cs, allowed, isSuper);
+        },
       ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, ColorScheme cs,
+      List<EventCategory> allowed, bool isSuper) {
+    return Scaffold(
+      floatingActionButton: allowed.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () =>
+                  EventEditScreen.open(context, allowedCategories: allowed),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('새 이벤트'),
+            ),
       body: StreamBuilder<List<PinEvent>>(
-        stream: FirestoreService.watchMyEvents(uid),
+        stream: FirestoreService.watchManageableEvents(
+            categories: isSuper ? null : allowed.toSet()),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -65,7 +87,8 @@ class EventAdminScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 90),
             itemCount: events.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _EventAdminTile(event: events[i]),
+            itemBuilder: (_, i) =>
+                _EventAdminTile(event: events[i], allowed: allowed),
           );
         },
       ),
@@ -75,7 +98,8 @@ class EventAdminScreen extends StatelessWidget {
 
 class _EventAdminTile extends StatelessWidget {
   final PinEvent event;
-  const _EventAdminTile({required this.event});
+  final List<EventCategory> allowed;
+  const _EventAdminTile({required this.event, required this.allowed});
 
   Future<void> _delete(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -115,7 +139,8 @@ class _EventAdminTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () => EventEditScreen.open(context, editing: event),
+          onTap: () => EventEditScreen.open(context,
+              editing: event, allowedCategories: allowed),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Row(

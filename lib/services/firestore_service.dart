@@ -33,13 +33,15 @@ class FirestoreService {
     });
   }
 
-  /// 내가(마스터) 등록한 이벤트 — 관리 화면용 (종료 포함, 최신 등록순)
-  static Stream<List<PinEvent>> watchMyEvents(String uid) {
-    return _events
-        .where('createdBy', isEqualTo: uid)
-        .snapshots()
-        .map((snap) {
-      final list = snap.docs.map(PinEvent.fromDoc).toList();
+  /// 관리 화면용 — 종료 포함 전체(최신순). [categories]==null 이면 전부(Super),
+  /// 지정하면 해당 카테고리만(Event Master 담당 범위).
+  static Stream<List<PinEvent>> watchManageableEvents(
+      {Set<EventCategory>? categories}) {
+    return _events.snapshots().map((snap) {
+      var list = snap.docs.map(PinEvent.fromDoc).toList();
+      if (categories != null) {
+        list = list.where((e) => categories.contains(e.category)).toList();
+      }
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
     });

@@ -30,12 +30,15 @@ service firebase.storage {
       allow update: if false;
     }
 
-    // ── events/ 폴더 (이벤트 포스터 — 마스터만 업로드) ─────────────────────
+    // ── events/ 폴더 (이벤트 포스터) ───────────────────────────────────────
+    // Storage 규칙은 Firestore 역할(eventRole)을 못 읽으므로 로그인 사용자면
+    // 업로드 허용(20MB). 실제 이벤트 등록은 Firestore 규칙에서 역할로 인가하므로
+    // 권한 없는 사용자가 올린 포스터는 이벤트에 연결되지 않는 고아 파일일 뿐.
     match /events/{filename} {
       allow read: if true;
-      allow create: if isMaster()
-                   && request.resource.size < 20 * 1024 * 1024; // 20MB 제한
-      allow delete: if isMaster();
+      allow create: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if request.auth != null;
       allow update: if false;
     }
 

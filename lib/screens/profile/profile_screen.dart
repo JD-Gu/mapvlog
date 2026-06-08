@@ -23,7 +23,10 @@ import '../../services/app_update_service.dart';
 import '../../utils/marker_emojis.dart';
 import '../../models/remote_version.dart';
 import '../../widgets/app_version_label.dart';
+import '../../services/user_status_service.dart';
+import '../../utils/event_permission.dart';
 import '../admin/event_admin_screen.dart';
+import '../admin/event_master_admin_screen.dart';
 import '../legal/legal_screen.dart';
 import '../../services/web_cache_reload_stub.dart'
     if (dart.library.io) '../../services/web_cache_reload_io.dart'
@@ -336,16 +339,49 @@ class _UserView extends StatelessWidget {
                     ),
                   ),
                 ),
-              // 마스터 전용 — 이벤트 관리 (라이브 이벤트 맵)
-              if (user.email == 'jaduck9@gmail.com')
+              // 이벤트 관리 — Super 또는 Event Master 에게 노출 (역할 기반)
+              SliverToBoxAdapter(
+                child: StreamBuilder<({String role, List<String> cats})>(
+                  stream: UserStatusService.watchEventRole(user.uid),
+                  builder: (context, snap) {
+                    final role = snap.data?.role ?? '';
+                    final cats = snap.data?.cats ?? const <String>[];
+                    if (!EventPermission.canManageAny(role, cats)) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                      child: OutlinedButton.icon(
+                        onPressed: () => EventAdminScreen.open(context),
+                        icon: const Icon(Icons.event, size: 16),
+                        label: Text(EventPermission.isSuper
+                            ? '🎪 이벤트 관리'
+                            : '🎪 이벤트 관리 (담당)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.4)),
+                          minimumSize: const Size(double.infinity, 42),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Super 전용 — 이벤트 마스터 임명/해제
+              if (EventPermission.isSuper)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.md, vertical: AppSpacing.xs),
                     child: OutlinedButton.icon(
-                      onPressed: () => EventAdminScreen.open(context),
-                      icon: const Icon(Icons.event, size: 16),
-                      label: const Text('🎪 이벤트 관리 (마스터)'),
+                      onPressed: () => EventMasterAdminScreen.open(context),
+                      icon: const Icon(Icons.workspace_premium, size: 16),
+                      label: const Text('👑 이벤트 마스터 관리 (Super)'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,
                         side: BorderSide(

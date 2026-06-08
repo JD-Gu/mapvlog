@@ -14,12 +14,16 @@ import '../../widgets/map_picker_sheet.dart';
 /// 마스터 전용 — 이벤트 등록/수정 폼.
 class EventEditScreen extends StatefulWidget {
   final PinEvent? editing;
-  const EventEditScreen({super.key, this.editing});
+  final List<EventCategory>? allowedCategories;
+  const EventEditScreen({super.key, this.editing, this.allowedCategories});
 
-  static Future<bool?> open(BuildContext context, {PinEvent? editing}) {
+  static Future<bool?> open(BuildContext context,
+      {PinEvent? editing, List<EventCategory>? allowedCategories}) {
     return Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => EventEditScreen(editing: editing)),
+      MaterialPageRoute(
+          builder: (_) => EventEditScreen(
+              editing: editing, allowedCategories: allowedCategories)),
     );
   }
 
@@ -34,7 +38,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   final _priceCtrl = TextEditingController();
   final _linkCtrl = TextEditingController();
 
-  EventCategory _category = EventCategory.festival;
+  late EventCategory _category;
+  late List<EventCategory> _cats;
   double? _lat;
   double? _lng;
   String? _address;
@@ -52,6 +57,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
   @override
   void initState() {
     super.initState();
+    final allowed = widget.allowedCategories;
+    _cats = (allowed == null || allowed.isEmpty)
+        ? EventCategory.adminCategories
+        : allowed;
     final e = widget.editing;
     final now = DateTime.now();
     if (e != null) {
@@ -60,9 +69,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _placeCtrl.text = e.placeName;
       _priceCtrl.text = e.price ?? '';
       _linkCtrl.text = e.link ?? '';
-      _category = e.category == EventCategory.daily
-          ? EventCategory.festival
-          : e.category;
+      _category = _cats.contains(e.category) ? e.category : _cats.first;
       _lat = e.lat;
       _lng = e.lng;
       _address = e.address;
@@ -72,6 +79,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _costType = e.costType;
       _existingPosterUrl = e.posterUrl;
     } else {
+      _category = _cats.first;
       _startAt = DateTime(now.year, now.month, now.day, now.hour + 1);
       _endAt = _startAt.add(const Duration(hours: 3));
     }
@@ -236,7 +244,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: EventCategory.adminCategories.map((c) {
+            children: _cats.map((c) {
               final sel = _category == c;
               return GestureDetector(
                 onTap: () => setState(() => _category = c),
