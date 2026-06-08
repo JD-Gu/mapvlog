@@ -28,7 +28,13 @@ class FirestoreService {
           .map(PinEvent.fromDoc)
           .where((e) => e.endAt.isAfter(now))
           .toList();
-      list.sort((a, b) => a.startAt.compareTo(b.startAt));
+      // 진행 중(곧 끝나는 순) → 예정(시작 가까운 순)
+      list.sort((a, b) {
+        final ao = a.isOngoing(now), bo = b.isOngoing(now);
+        if (ao != bo) return ao ? -1 : 1;
+        if (ao && bo) return a.endAt.compareTo(b.endAt);
+        return a.startAt.compareTo(b.startAt);
+      });
       return list;
     });
   }

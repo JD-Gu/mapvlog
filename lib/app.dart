@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'models/event.dart';
 import 'models/user_status.dart';
 import 'models/vlog.dart';
 import 'providers/auth_provider.dart';
@@ -115,10 +116,13 @@ class MapVlogApp extends StatelessWidget {
 }
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key, this.initialVlog});
+  const MainShell({super.key, this.initialVlog, this.initialEvent});
 
   /// 딥링크 진입 시 바로 열 브이로그 (null이면 일반 홈 진입)
   final Vlog? initialVlog;
+
+  /// 딥링크 진입 시 바로 열 이벤트 (친구지도 이벤트 포커스)
+  final PinEvent? initialEvent;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -160,6 +164,14 @@ class _MainShellState extends State<MainShell> {
         if (!mounted) return;
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => VlogPlayerScreen(vlog: widget.initialVlog!),
+        ));
+      });
+    } else if (widget.initialEvent != null) {
+      // 딥링크 이벤트 → 친구지도(이벤트 포커스) 로 진입
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => LiveMapScreen(focusEvent: widget.initialEvent),
         ));
       });
     }

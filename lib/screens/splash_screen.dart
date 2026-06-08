@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app.dart';
 import '../main.dart' show initialWebFragment;
+import '../models/event.dart';
 import '../models/vlog.dart';
 import '../services/firestore_service.dart';
 import '../utils/constants.dart';
@@ -87,6 +88,13 @@ class _SplashScreenState extends State<SplashScreen>
           await _openDeepLink(vlogId, user);
           return;
         }
+      } else if (fragment.startsWith('/event/')) {
+        final eventId = fragment.substring('/event/'.length).split('?').first;
+        debugPrint('[PinFlick] deeplink eventId="$eventId"');
+        if (eventId.isNotEmpty) {
+          await _openEventDeepLink(eventId);
+          return;
+        }
       }
     }
 
@@ -135,6 +143,23 @@ class _SplashScreenState extends State<SplashScreen>
     // MainShell 에 initialVlog 를 전달 → MainShell.initState 에서 플레이어 push
     nav.pushReplacement(
       MaterialPageRoute(builder: (_) => MainShell(initialVlog: vlog)),
+    );
+  }
+
+  /// 딥링크로 특정 이벤트 직접 진입 → MainShell 위에 친구지도(이벤트 포커스)
+  Future<void> _openEventDeepLink(String eventId) async {
+    final nav = Navigator.of(context);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_done', true);
+    PinEvent? event;
+    try {
+      event = await FirestoreService.getEvent(eventId);
+    } catch (e) {
+      debugPrint('[PinFlick] getEvent error: $e');
+    }
+    if (!mounted) return;
+    nav.pushReplacement(
+      MaterialPageRoute(builder: (_) => MainShell(initialEvent: event)),
     );
   }
 

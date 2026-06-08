@@ -2,7 +2,7 @@
 description: "GPS 타임스탬프 기반 브이로그 플랫폼"
 publish_to: 'none'
 
-version: 1.71.0+117
+version: 1.72.0+118
 
 environment:
   sdk: ^3.11.4

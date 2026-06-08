@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/event.dart';
@@ -115,6 +116,17 @@ class _EventCardState extends State<EventCard> {
     final m =
         Geolocator.distanceBetween(p.latitude, p.longitude, _e.lat, _e.lng);
     return m < 1000 ? '${m.round()}m' : '${(m / 1000).toStringAsFixed(1)}km';
+  }
+
+  Future<void> _share() async {
+    final url = 'https://pinflick.web.app/#/event/${_e.id}';
+    final place = _e.placeName.isNotEmpty ? _e.placeName : (_e.address ?? '');
+    final text = '${_e.category.emoji} ${_e.category.label} · ${_e.title}\n'
+        '📅 ${_fmtRange()}'
+        '${place.isNotEmpty ? '\n📍 $place' : ''}'
+        '${_e.link != null && _e.link!.isNotEmpty ? '\n🔗 ${_e.link}' : ''}'
+        '\n\nPinFlick에서 보기 👇\n$url';
+    await Share.share(text, subject: _e.title);
   }
 
   Future<void> _openLink() async {
@@ -276,6 +288,9 @@ class _EventCardState extends State<EventCard> {
                       _saveCount > 0 ? '$_saveCount' : '저장',
                       _toggleSave,
                     ),
+                    const SizedBox(width: 4),
+                    _statBtn(Icons.ios_share, cs.onSurfaceVariant, '공유',
+                        _share),
                     const Spacer(),
                     Icon(Icons.visibility_outlined,
                         size: 15, color: cs.onSurfaceVariant),
