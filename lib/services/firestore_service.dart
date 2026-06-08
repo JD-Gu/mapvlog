@@ -75,6 +75,51 @@ class FirestoreService {
     await _events.doc(id).delete();
   }
 
+  /// 조회수 +1 (세션당 1회 호출 권장)
+  static Future<void> incrementEventView(String id) async {
+    try {
+      await _events.doc(id).update({'viewCount': FieldValue.increment(1)});
+    } catch (_) {}
+  }
+
+  static Stream<bool> watchEventLiked(String eventId, String uid) => _events
+      .doc(eventId)
+      .collection('likes')
+      .doc(uid)
+      .snapshots()
+      .map((d) => d.exists);
+
+  static Future<void> setEventLiked(
+      String eventId, String uid, bool liked) async {
+    final ref = _events.doc(eventId).collection('likes').doc(uid);
+    if (liked) {
+      await ref.set({'createdAt': FieldValue.serverTimestamp()});
+      await _events.doc(eventId).update({'likeCount': FieldValue.increment(1)});
+    } else {
+      await ref.delete();
+      await _events.doc(eventId).update({'likeCount': FieldValue.increment(-1)});
+    }
+  }
+
+  static Stream<bool> watchEventSaved(String eventId, String uid) => _events
+      .doc(eventId)
+      .collection('saves')
+      .doc(uid)
+      .snapshots()
+      .map((d) => d.exists);
+
+  static Future<void> setEventSaved(
+      String eventId, String uid, bool saved) async {
+    final ref = _events.doc(eventId).collection('saves').doc(uid);
+    if (saved) {
+      await ref.set({'uid': uid, 'createdAt': FieldValue.serverTimestamp()});
+      await _events.doc(eventId).update({'saveCount': FieldValue.increment(1)});
+    } else {
+      await ref.delete();
+      await _events.doc(eventId).update({'saveCount': FieldValue.increment(-1)});
+    }
+  }
+
   // ─── 읽기 ─────────────────────────────────────────────────────────────────
 
   /// 최신순 브이로그 스트림 (검색 등) — visibility 필터 적용
