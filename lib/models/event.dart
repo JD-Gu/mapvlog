@@ -13,11 +13,11 @@ enum EventCategory {
   String get value => name;
 
   String get label => switch (this) {
-        EventCategory.sports => '스포츠',
-        EventCategory.culture => '공연·전시',
-        EventCategory.festival => '축제·바자회',
-        EventCategory.public => '지역 행사',
-        EventCategory.daily => '일상',
+        EventCategory.sports => '스포츠/레저',
+        EventCategory.culture => '공연/전시',
+        EventCategory.festival => '축제/바자회',
+        EventCategory.public => '공공/지자체',
+        EventCategory.daily => '일상/기업',
       };
 
   String get emoji => switch (this) {

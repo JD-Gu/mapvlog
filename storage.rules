@@ -30,6 +30,15 @@ service firebase.storage {
       allow update: if false;
     }
 
+    // ── events/ 폴더 (이벤트 포스터 — 마스터만 업로드) ─────────────────────
+    match /events/{filename} {
+      allow read: if true;
+      allow create: if isMaster()
+                   && request.resource.size < 20 * 1024 * 1024; // 20MB 제한
+      allow delete: if isMaster();
+      allow update: if false;
+    }
+
     // ── thumbnails/ 폴더 (썸네일) ──────────────────────────────────────────
     match /thumbnails/{userId}/{filename} {
       allow read: if true;
