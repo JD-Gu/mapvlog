@@ -13,7 +13,11 @@ import 'map_launcher_sheet.dart';
 class EventCard extends StatefulWidget {
   final PinEvent event;
   final Position? currentPosition;
-  const EventCard({super.key, required this.event, this.currentPosition});
+
+  /// 카드(버튼 외 영역) 탭 시 콜백 — 홈 피드에서 친구지도 이벤트 위치로 이동
+  final VoidCallback? onTap;
+  const EventCard(
+      {super.key, required this.event, this.currentPosition, this.onTap});
 
   @override
   State<EventCard> createState() => _EventCardState();
@@ -138,7 +142,9 @@ class _EventCardState extends State<EventCard> {
     final dist = _distanceLabel();
     final hasPoster = _e.posterUrl != null && _e.posterUrl!.isNotEmpty;
 
-    return Container(
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -318,6 +324,7 @@ class _EventCardState extends State<EventCard> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

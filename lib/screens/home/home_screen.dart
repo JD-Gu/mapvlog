@@ -677,7 +677,19 @@ class _HomeScreenState extends State<HomeScreen> {
               (context, i) => Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: EventCard(
-                    event: events[i], currentPosition: _position),
+                  event: events[i],
+                  currentPosition: _position,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            LiveMapScreen(focusEvent: events[i]),
+                      ),
+                    );
+                  },
+                ),
               ),
               childCount: events.length,
             ),

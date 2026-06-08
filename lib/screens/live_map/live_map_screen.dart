@@ -36,7 +36,11 @@ class LiveMapScreen extends StatefulWidget {
   /// 홈 피드에서 체크인 카드 탭 시 사용
   final Vlog? focusCheckIn;
 
-  const LiveMapScreen({super.key, this.focusCheckIn});
+  /// 진입 시 이벤트 모드로 열고 이 이벤트로 카메라 이동 + 상세 표시 (옵션)
+  /// 홈 피드에서 이벤트 카드 탭 시 사용
+  final PinEvent? focusEvent;
+
+  const LiveMapScreen({super.key, this.focusCheckIn, this.focusEvent});
 
   @override
   State<LiveMapScreen> createState() => _LiveMapScreenState();
@@ -104,6 +108,13 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   @override
   void initState() {
     super.initState();
+    // 홈에서 이벤트 카드로 진입 — 이벤트 모드로 열고, 해당 이벤트가 반경 필터에
+    // 걸리지 않도록 전국·전체 카테고리로 시작
+    if (widget.focusEvent != null) {
+      _eventMode = true;
+      _radiusKm = null;
+      _eventCatFilter = null;
+    }
     _init();
   }
 
@@ -986,6 +997,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
               _mapController = c;
               // 홈에서 체크인 위치로 진입한 경우 — 우선 그 위치로 이동 + InfoWindow 표시
               final focus = widget.focusCheckIn;
+              final focusEvent = widget.focusEvent;
               if (focus != null) {
                 _didInitialCameraMove = true;
                 c.animateCamera(CameraUpdate.newLatLngZoom(
@@ -995,6 +1007,17 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                   _focusSheetShown = true;
                   Future.delayed(const Duration(milliseconds: 650), () {
                     if (mounted) _showCheckInSheet(focus);
+                  });
+                }
+              } else if (focusEvent != null) {
+                // 홈에서 이벤트 카드로 진입 — 이벤트 위치로 이동 + 상세 시트
+                _didInitialCameraMove = true;
+                c.animateCamera(CameraUpdate.newLatLngZoom(
+                    LatLng(focusEvent.lat, focusEvent.lng), 15));
+                if (!_focusSheetShown) {
+                  _focusSheetShown = true;
+                  Future.delayed(const Duration(milliseconds: 650), () {
+                    if (mounted) _showEventSheet(focusEvent);
                   });
                 }
               } else if (_pendingCameraLocation != null) {
