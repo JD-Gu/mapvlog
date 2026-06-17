@@ -47,8 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _crossAxisCount = 1;
   _SortMode _sortMode = _SortMode.byDate;
   String? _categoryFilter; // (구 POI 필터, 미사용 — 항상 null)
-  /// 이벤트 카테고리 필터. null = 전체(이벤트+일상), daily = 일상(친구 피드)
-  EventCategory? _eventFilter;
+  /// 선택된 이벤트 카테고리 (빈 Set = 전체). daily 포함 시 일상 피드도 표시.
+  final Set<EventCategory> _selectedCategories = {};
   _SortOrder _sortOrder = _SortOrder.desc; // 날짜 기본: 최신순
   Position? _position;
   /// 친구 UID 캐시 (피드 필터링용) — null이면 로딩 중
@@ -57,29 +57,170 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 내가 만든 친구 그룹 — null이면 로딩 중
   List<FriendGroup>? _myGroups;
   StreamSubscription<List<FriendGroup>>? _groupsSub;
-  /// 선택된 그룹 ID — null = 전체 친구
-  String? _activeGroupId;
+  /// 선택된 그룹 ID 집합 (빈 Set = 전체 친구). 여러 그룹 = 멤버 합집합.
+  final Set<String> _selectedGroupIds = {};
 
   /// 그룹 필터 적용 후 effective 친구 UID 목록
-  /// — _activeGroupId == null 이면 전체 친구 반환
+  /// — 선택 그룹 없으면 전체 친구, 있으면 선택 그룹들의 멤버 합집합.
   List<String> get _effectiveFriendUids {
     final all = _friendUids ?? [];
-    if (_activeGroupId == null) return all;
-    final group = _myGroups
-        ?.firstWhere(
-          (g) => g.id == _activeGroupId,
-          orElse: () => FriendGroup(
-            id: '',
-            name: '',
-            emoji: '',
-            mode: GroupMode.insider,
-            memberUids: const [],
-            createdAt: DateTime.now(),
-          ),
-        );
-    if (group == null || group.id.isEmpty) return all;
-    final memberSet = group.memberUids.toSet();
+    if (_selectedGroupIds.isEmpty) return all;
+    final memberSet = <String>{};
+    for (final g in _myGroups ?? const <FriendGroup>[]) {
+      if (_selectedGroupIds.contains(g.id)) memberSet.addAll(g.memberUids);
+    }
+    if (memberSet.isEmpty) return all;
     return all.where(memberSet.contains).toList();
+  }
+
+  // ── 필터 요약/시트/뱃지 헬퍼 ─────────────────────────────────────────────
+  String _groupSummary() {
+    final sel =
+        (_myGroups ?? const <FriendGroup>[]).where((g) => _selectedGroupIds.contains(g.id)).toList();
+    if (sel.isEmpty) return '전체';
+    if (sel.length == 1) return sel.first.name;
+    return '${sel.first.name} 외 ${sel.length - 1}';
+  }
+
+  String _categorySummary() {
+    final sel = EventCategory.values.where(_selectedCategories.contains).toList();
+    if (sel.isEmpty) return '전체';
+    if (sel.length == 1) return sel.first.label;
+    return '${sel.first.label} 외 ${sel.length - 1}';
+  }
+
+  /// daily 를 뺀 이벤트 카테고리만 (이벤트 슬리버 필터용)
+  Set<EventCategory> get _eventCats =>
+      _selectedCategories.where((c) => c != EventCategory.daily).toSet();
+  bool get _showEvents =>
+      _selectedCategories.isEmpty || _eventCats.isNotEmpty;
+  bool get _showFeed =>
+      _selectedCategories.isEmpty ||
+      _selectedCategories.contains(EventCategory.daily);
+
+  Future<void> _openCategoryFilter() async {
+    final opts = EventCategory.values
+        .map((c) => _FilterOption(c.name, c.label, c.emoji))
+        .toList();
+    final result = await _showMultiCheck(
+        '카테고리', opts, _selectedCategories.map((c) => c.name).toSet());
+    if (result != null && mounted) {
+      setState(() {
+        _selectedCategories
+          ..clear()
+          ..addAll(result.map(EventCategory.fromString));
+      });
+    }
+  }
+
+  Future<void> _openGroupFilter() async {
+    final groups = _myGroups ?? const <FriendGroup>[];
+    if (groups.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('만든 친구 그룹이 없어요')));
+      return;
+    }
+    final opts =
+        groups.map((g) => _FilterOption(g.id, g.name, g.emoji)).toList();
+    final result = await _showMultiCheck('그룹', opts, _selectedGroupIds);
+    if (result != null && mounted) {
+      setState(() {
+        _selectedGroupIds
+          ..clear()
+          ..addAll(result);
+      });
+    }
+  }
+
+  Future<Set<String>?> _showMultiCheck(
+      String title, List<_FilterOption> opts, Set<String> initial) {
+    HapticFeedback.selectionClick();
+    return showModalBottomSheet<Set<String>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) =>
+          _MultiCheckSheet(title: title, options: opts, initial: initial),
+    );
+  }
+
+  Widget _buildActiveFilterBadges() {
+    final badges = <Widget>[];
+    for (final g in (_myGroups ?? const <FriendGroup>[])
+        .where((g) => _selectedGroupIds.contains(g.id))) {
+      badges.add(_filterBadge('${g.emoji} ${g.name}',
+          () => setState(() => _selectedGroupIds.remove(g.id))));
+    }
+    for (final c in EventCategory.values.where(_selectedCategories.contains)) {
+      badges.add(_filterBadge('${c.emoji} ${c.label}',
+          () => setState(() => _selectedCategories.remove(c))));
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 8, AppSpacing.md, 0),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ...badges,
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _selectedGroupIds.clear();
+                _selectedCategories.clear();
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh,
+                      size: 14, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 3),
+                  Text('초기화',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterBadge(String label, VoidCallback onRemove) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onRemove();
+      },
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 5, 7, 5),
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: cs.primary.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary)),
+            const SizedBox(width: 3),
+            Icon(Icons.close, size: 13, color: cs.primary),
+          ],
+        ),
+      ),
+    );
   }
   /// 거리 정렬용 위치 페치 중 → 스켈레톤 표시
   bool _fetchingPosition = false;
@@ -127,10 +268,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // 그룹 필터 활성 시 — 내 글은 "그 그룹에 공개한 글"만 노출.
     // (친구 글은 watchFriendsVlogs 의 author 쿼리로 이미 그룹 멤버만 들어옴.
     //  내 글은 항상 포함되므로 여기서 그룹 공개 여부로 한 번 더 거른다.)
-    if (_activeGroupId != null) {
+    if (_selectedGroupIds.isNotEmpty) {
       final me = FirebaseAuth.instance.currentUser?.uid;
       src = src.where((v) =>
-          v.authorId != me || v.visibleGroupIds.contains(_activeGroupId));
+          v.authorId != me ||
+          v.visibleGroupIds.any(_selectedGroupIds.contains));
     }
 
     // 카테고리 필터 적용
@@ -248,11 +390,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _myGroups = list;
-        // 선택돼있던 그룹이 삭제된 경우 전체로 되돌림
-        if (_activeGroupId != null &&
-            !list.any((g) => g.id == _activeGroupId)) {
-          _activeGroupId = null;
-        }
+        // 선택돼있던 그룹이 삭제된 경우 선택에서 제거
+        _selectedGroupIds
+            .removeWhere((id) => !list.any((g) => g.id == id));
       });
     });
   }
@@ -524,49 +664,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            // ── 친구 그룹 가로 탭 (전체 + 사용자가 만든 그룹) ──────────
-            if (_myGroups != null)
-              SliverToBoxAdapter(
-                child: _FriendGroupTabBar(
-                  groups: _myGroups!,
-                  activeGroupId: _activeGroupId,
-                  onSelect: (gid) {
-                    HapticFeedback.selectionClick();
-                    setState(() => _activeGroupId = gid);
-                  },
-                ),
-              ),
-
-            // ── 카테고리 칩 필터 (가로 스크롤) ───────────────────────────
+            // ── 필터 드롭다운 바 (그룹·카테고리 멀티셀렉트) ─────────────
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.md, 6, AppSpacing.md, 4),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md, 8, AppSpacing.md, 0),
+                child: Row(
                   children: [
-                    _HomeCategoryChip(
-                      label: '전체',
-                      emoji: '🌐',
-                      selected: _eventFilter == null,
-                      onTap: () => setState(() => _eventFilter = null),
+                    Expanded(
+                      child: _FilterDropdownButton(
+                        icon: Icons.groups_outlined,
+                        summary: _groupSummary(),
+                        count: _selectedGroupIds.length,
+                        onTap: _openGroupFilter,
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    ...EventCategory.values.map((c) => Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: _HomeCategoryChip(
-                            label: c.label,
-                            emoji: c.emoji,
-                            selected: _eventFilter == c,
-                            onTap: () =>
-                                setState(() => _eventFilter = c),
-                          ),
-                        )),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _FilterDropdownButton(
+                        icon: Icons.category_outlined,
+                        summary: _categorySummary(),
+                        count: _selectedCategories.length,
+                        onTap: _openCategoryFilter,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
+
+            // ── 활성 필터 뱃지 (선택 있을 때만) ──────────────────────────
+            if (_selectedGroupIds.isNotEmpty ||
+                _selectedCategories.isNotEmpty)
+              SliverToBoxAdapter(child: _buildActiveFilterBadges()),
 
             // ── 컴팩트 "지도 탐색" CTA + 정렬/뷰 토글 (한 줄) ─────────────
             SliverToBoxAdapter(
@@ -628,10 +758,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // ── 이벤트 섹션 (전체 또는 이벤트 카테고리 선택 시) ──────────
-            if (_eventFilter != EventCategory.daily) _buildEventsSliver(),
+            if (_showEvents) _buildEventsSliver(),
             // ── 친구 + 본인 피드 (전체 또는 일상 선택 시) ────────────────
-            if (_eventFilter == null || _eventFilter == EventCategory.daily)
-              _buildFeedSliver(),
+            if (_showFeed) _buildFeedSliver(),
           ],
         ),
       ),
@@ -648,18 +777,19 @@ class _HomeScreenState extends State<HomeScreen> {
           return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
         var events = snap.data ?? [];
-        if (_eventFilter != null && _eventFilter != EventCategory.daily) {
-          events = events.where((e) => e.category == _eventFilter).toList();
+        final cats = _eventCats;
+        if (cats.isNotEmpty) {
+          events = events.where((e) => cats.contains(e.category)).toList();
         }
         if (events.isEmpty) {
           // 카테고리를 콕 집어 골랐는데 없으면 안내, 전체면 조용히(피드가 이어짐)
-          if (_eventFilter != null) {
+          if (cats.isNotEmpty) {
             return SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
                 child: Center(
                   child: Text(
-                    '${_eventFilter!.emoji} 등록된 ${_eventFilter!.label} 이벤트가 없어요',
+                    '등록된 ${_categorySummary()} 이벤트가 없어요',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 13, color: AppColors.textSecondary),
@@ -1412,100 +1542,191 @@ class _DateSectionHeader extends StatelessWidget {
   }
 }
 
-// ─── 친구 그룹 가로 탭 바 (전체 + 사용자 정의 그룹) ─────────────────────
-class _FriendGroupTabBar extends StatelessWidget {
-  final List<FriendGroup> groups;
-  final String? activeGroupId; // null = 전체
-  final ValueChanged<String?> onSelect;
-
-  const _FriendGroupTabBar({
-    required this.groups,
-    required this.activeGroupId,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(AppSpacing.md, 6, AppSpacing.md, 6),
-        children: [
-          _GroupTab(
-            emoji: '🌐',
-            label: '전체',
-            selected: activeGroupId == null,
-            onTap: () => onSelect(null),
-          ),
-          const SizedBox(width: 6),
-          ...groups.map((g) => Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: _GroupTab(
-                  emoji: g.emoji,
-                  label: g.name,
-                  modeEmoji: g.mode.emoji,
-                  selected: activeGroupId == g.id,
-                  onTap: () => onSelect(g.id),
-                ),
-              )),
-        ],
-      ),
-    );
-  }
+// ─── 필터 옵션 모델 ───────────────────────────────────────────────────────
+class _FilterOption {
+  final String id;
+  final String label;
+  final String emoji;
+  const _FilterOption(this.id, this.label, this.emoji);
 }
 
-class _GroupTab extends StatelessWidget {
-  final String emoji;
-  final String label;
-  final String? modeEmoji;
-  final bool selected;
+// ─── 필터 드롭다운 버튼 (그룹·카테고리 멀티셀렉트) ────────────────────────
+class _FilterDropdownButton extends StatelessWidget {
+  final IconData icon;
+  final String summary;
+  final int count;
   final VoidCallback onTap;
-
-  const _GroupTab({
-    required this.emoji,
-    required this.label,
-    required this.selected,
+  const _FilterDropdownButton({
+    required this.icon,
+    required this.summary,
+    required this.count,
     required this.onTap,
-    this.modeEmoji,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final bg = selected ? cs.primary : cs.surfaceContainerHighest;
-    final fg = selected ? cs.onPrimary : cs.onSurface;
+    final active = count > 0;
     return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: bg,
+          color: active
+              ? cs.primary.withValues(alpha: 0.10)
+              : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppRadius.full),
           border: Border.all(
-            color: selected ? cs.primary : cs.outlineVariant,
-            width: 1,
+            color: active ? cs.primary : cs.outlineVariant,
+            width: active ? 1.4 : 1,
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                color: fg,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                letterSpacing: -0.2,
+            Icon(icon,
+                size: 16,
+                color: active ? cs.primary : cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                summary,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                  color: active ? cs.primary : cs.onSurface,
+                ),
               ),
             ),
-            if (modeEmoji != null) ...[
+            if (count > 0) ...[
               const SizedBox(width: 4),
-              Text(modeEmoji!, style: const TextStyle(fontSize: 11)),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$count',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+              ),
             ],
+            Icon(Icons.arrow_drop_down,
+                size: 20,
+                color: active ? cs.primary : cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 멀티 체크 바텀시트 (전체 + 체크리스트 + 적용) ────────────────────────
+class _MultiCheckSheet extends StatefulWidget {
+  final String title;
+  final List<_FilterOption> options;
+  final Set<String> initial;
+  const _MultiCheckSheet({
+    required this.title,
+    required this.options,
+    required this.initial,
+  });
+
+  @override
+  State<_MultiCheckSheet> createState() => _MultiCheckSheetState();
+}
+
+class _MultiCheckSheetState extends State<_MultiCheckSheet> {
+  late final Set<String> _sel = {...widget.initial};
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(widget.title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                TextButton(
+                  onPressed:
+                      _sel.isEmpty ? null : () => setState(_sel.clear),
+                  child: const Text('전체 해제'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  CheckboxListTile(
+                    value: _sel.isEmpty,
+                    onChanged: (_) => setState(_sel.clear),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    title: const Text('🌐  전체',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  const Divider(height: 1),
+                  ...widget.options.map((o) => CheckboxListTile(
+                        value: _sel.contains(o.id),
+                        onChanged: (v) => setState(() {
+                          if (v == true) {
+                            _sel.add(o.id);
+                          } else {
+                            _sel.remove(o.id);
+                          }
+                        }),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        title: Text('${o.emoji}  ${o.label}'),
+                      )),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, _sel),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full)),
+              ),
+              child: const Text('적용'),
+            ),
           ],
         ),
       ),
@@ -1565,62 +1786,6 @@ class _NewVlogBanner extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── 홈 카테고리 필터 칩 ──────────────────────────────────────────────────
-class _HomeCategoryChip extends StatelessWidget {
-  final String label;
-  final String emoji;
-  final bool selected;
-  final VoidCallback onTap;
-  const _HomeCategoryChip({
-    required this.label,
-    required this.emoji,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // Outlined 스타일 — 그룹탭(solid 캡슐)과 시각 계층 구분
-    // 미선택: 투명 배경 + 테두리만 / 선택: primary 연한 채움 + primary 테두리
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          border: Border.all(
-            color: selected ? AppColors.primary : cs.outlineVariant,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 13)),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected ? AppColors.primary : cs.onSurfaceVariant,
-              ),
-            ),
-          ],
         ),
       ),
     );
