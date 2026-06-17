@@ -126,7 +126,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     await UserStatusService.ensureUserDoc(user);
 
     // 2) 내 정보 구독
-    _meSub = UserStatusService.watchUser(user.uid).listen((u) {
+    _meSub = UserStatusService.watchMyLive(user.uid).listen((u) {
       if (mounted) setState(() => _me = u);
     });
 
@@ -134,6 +134,8 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     _friendsSub = FriendService.watchMyFriends().listen((list) async {
       if (!mounted) return;
       _friendUids = list.map((f) => f.friendUid).toSet();
+      // 내 위치 공개 대상(visibleTo) 동기화 — 친구만 내 좌표 열람 가능
+      UserStatusService.setLocationAudience(user.uid, _friendUids.toList());
       _updateTheirViewSubs(user.uid);
       _resubscribeRecentCheckIns(user.uid);
       await _rebuildMarkers();
@@ -146,8 +148,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       _rebuildMarkers();
     });
 
-    // 4) 모든 사용자 구독 (친구 + 본인만 client-side 필터)
-    _usersSub = UserStatusService.watchAllLiveUsers().listen((users) async {
+    // 4) 친구 라이브 위치 구독 (규칙상 visibleTo 에 내가 포함된 것만 수신)
+    _usersSub =
+        UserStatusService.watchVisibleLiveUsers(user.uid).listen((users) async {
       if (!mounted) return;
       _users = users;
       await _rebuildMarkers();

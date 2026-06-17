@@ -9,6 +9,8 @@ import '../models/user_status.dart';
 class UserStatusService {
   static final _db = FirebaseFirestore.instance;
   static final _users = _db.collection('users');
+  // 민감 좌표 분리 컬렉션 — visibleTo(친구)만 열람 (firestore.rules)
+  static final _live = _db.collection('liveLocations');
 
   /// 백그라운드 위치 공유 ON/OFF 를 Firestore 에 저장 (서버 스케줄러가 읽음)
   static Future<void> setBgLocationEnabled(String uid, bool enabled) async {
@@ -36,7 +38,7 @@ class UserStatusService {
   static Future<({String role, List<String> cats})> getEventRole(
       String uid) async {
     final d = await _users.doc(uid).get();
-    final m = d.data() as Map<String, dynamic>? ?? {};
+    final m = d.data() ?? <String, dynamic>{};
     return (
       role: (m['eventRole'] as String?) ?? '',
       cats: ((m['eventCategories'] as List<dynamic>?) ?? const [])
@@ -68,27 +70,29 @@ class UserStatusService {
     }
   }
 
-  /// 모든 사용자의 라이브 정보 스트림 (위치 있는 사용자만)
-  static Stream<List<LiveUser>> watchAllLiveUsers() {
-    return _users
-        .where('liveLocation', isNull: false)
+  /// 나에게 공개된(visibleTo 에 내 uid 포함) 친구들의 라이브 위치 스트림.
+  /// 규칙상 친구 것만 내려오며, 내 doc 도 자기 visibleTo 에 포함돼 함께 옴.
+  static Stream<List<LiveUser>> watchVisibleLiveUsers(String myUid) {
+    return _live
+        .where('visibleTo', arrayContains: myUid)
         .snapshots()
         .map((snap) => snap.docs.map(LiveUser.fromDoc).toList());
   }
 
-  /// 특정 사용자의 라이브 정보 스트림
-  static Stream<LiveUser?> watchUser(String uid) {
-    return _users.doc(uid).snapshots().map((doc) {
+  /// 내 라이브 정보 스트림 (본인 doc — 카메라 이동/프라이버시 상태용)
+  static Stream<LiveUser?> watchMyLive(String uid) {
+    return _live.doc(uid).snapshots().map((doc) {
       if (!doc.exists) return null;
       return LiveUser.fromDoc(doc);
     });
   }
 
-  /// 1회 조회
-  static Future<LiveUser?> getUser(String uid) async {
-    final doc = await _users.doc(uid).get();
-    if (!doc.exists) return null;
-    return LiveUser.fromDoc(doc);
+  /// 내 위치 공개 대상(visibleTo) 설정 — 수락된 친구 + 본인.
+  /// 친구 목록 변경 시 호출(친구지도) + 앱 시작 시 reconcile(ensureUserDoc).
+  static Future<void> setLocationAudience(
+      String uid, List<String> friendUids) async {
+    final audience = <String>{...friendUids, uid}.toList();
+    await _live.doc(uid).set({'visibleTo': audience}, SetOptions(merge: true));
   }
 
   /// 사용자 문서 초기화 — 첫 로그인/접속 시 호출
@@ -110,7 +114,39 @@ class UserStatusService {
         'displayName': user.displayName ?? user.email ?? '사용자',
         if (user.photoURL != null) 'photoUrl': user.photoURL,
         'lastSeen': FieldValue.serverTimestamp(),
+        // 구 버전이 users 문서에 남긴 좌표 정리 (이제 liveLocations 로 분리)
+        'liveLocation': FieldValue.delete(),
+        'frozenLocation': FieldValue.delete(),
       });
+    }
+
+    // liveLocations 시드 + visibleTo reconcile (마이그레이션 자동 치유)
+    await _reconcileLiveDoc(user);
+  }
+
+  /// liveLocations/{uid} 의 프로필 미러 + visibleTo(수락 친구+본인) 동기화.
+  /// 좌표는 건드리지 않음(위치 업데이트가 채움).
+  static Future<void> _reconcileLiveDoc(User user) async {
+    try {
+      final uid = user.uid;
+      final uDoc = await _users.doc(uid).get();
+      final ud = uDoc.data() ?? <String, dynamic>{};
+      final friendsSnap = await _users
+          .doc(uid)
+          .collection('friends')
+          .where('status', isEqualTo: 'accepted')
+          .get();
+      final friendUids = friendsSnap.docs.map((d) => d.id).toList();
+      await _live.doc(uid).set({
+        'displayName':
+            (ud['displayName'] as String?) ?? user.displayName ?? '사용자',
+        'photoUrl': (ud['photoUrl'] as String?) ?? user.photoURL,
+        'privacyMode': (ud['privacyMode'] as String?) ?? PrivacyMode.fog.value,
+        if (ud['status'] is Map) 'status': ud['status'],
+        'visibleTo': <String>{...friendUids, uid}.toList(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // 친구 목록 권한/네트워크 일시 오류는 다음 호출에서 자가 치유
     }
   }
 
@@ -120,19 +156,24 @@ class UserStatusService {
     required String emoji,
     required String label,
   }) async {
+    final status = {
+      'emoji': emoji,
+      'label': label,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
     await _users.doc(uid).set({
-      'status': {
-        'emoji': emoji,
-        'label': label,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
+      'status': status,
       'lastSeen': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    // 지도 표시는 liveLocations 를 읽으므로 미러
+    await _live.doc(uid).set({'status': status}, SetOptions(merge: true));
   }
 
   /// 상태 제거
   static Future<void> clearStatus(String uid) async {
     await _users.doc(uid).update({'status': FieldValue.delete()});
+    await _live.doc(uid).set(
+        {'status': FieldValue.delete()}, SetOptions(merge: true));
   }
 
   /// 프라이버시 모드 설정 (얼음 모드인 경우 현재 위치를 frozenLocation으로 저장)
@@ -142,27 +183,33 @@ class UserStatusService {
     double? currentLat,
     double? currentLng,
   }) async {
-    final data = <String, dynamic>{
+    // privacyMode 는 users 에 정본 보관(updateLocation 이 읽어 마스킹)
+    await _users.doc(uid).set({
+      'privacyMode': mode.value,
+      'lastSeen': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 지도 표시·동결 좌표는 liveLocations 로
+    final live = <String, dynamic>{
       'privacyMode': mode.value,
       'lastSeen': FieldValue.serverTimestamp(),
     };
-    // 얼음 모드 진입 시 현재 위치를 동결
     if (mode == PrivacyMode.ice &&
         currentLat != null &&
         currentLng != null) {
-      data['frozenLocation'] = {
+      live['frozenLocation'] = {
         'lat': currentLat,
         'lng': currentLng,
         'frozenAt': FieldValue.serverTimestamp(),
       };
       // 동결 위치를 표시 위치로도 설정
-      data['liveLocation'] = {
+      live['liveLocation'] = {
         'lat': currentLat,
         'lng': currentLng,
         'updatedAt': FieldValue.serverTimestamp(),
       };
     }
-    await _users.doc(uid).set(data, SetOptions(merge: true));
+    await _live.doc(uid).set(live, SetOptions(merge: true));
   }
 
   // ─── 친구 호출 (Ping) ────────────────────────────────────────────────────
@@ -237,7 +284,11 @@ class UserStatusService {
       finalLng += (rnd.nextDouble() - 0.5) * grid;
     }
 
-    await _users.doc(uid).set({
+    final ud = doc.exists
+        ? (doc.data() as Map<String, dynamic>)
+        : <String, dynamic>{};
+    final auth = FirebaseAuth.instance.currentUser;
+    await _live.doc(uid).set({
       'liveLocation': {
         'lat': finalLat,
         'lng': finalLng,
@@ -246,6 +297,13 @@ class UserStatusService {
         if (batteryLevel != null) 'batteryLevel': batteryLevel,
       },
       'lastSeen': FieldValue.serverTimestamp(),
+      'privacyMode': mode.value,
+      'displayName':
+          (ud['displayName'] as String?) ?? auth?.displayName ?? '사용자',
+      'photoUrl': (ud['photoUrl'] as String?) ?? auth?.photoURL,
+      if (ud['status'] is Map) 'status': ud['status'],
+      // 본인은 자기 지도에서 항상 보이도록 self-visibility 보장
+      'visibleTo': FieldValue.arrayUnion([uid]),
     }, SetOptions(merge: true));
   }
 }

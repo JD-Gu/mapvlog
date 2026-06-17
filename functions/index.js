@@ -291,11 +291,13 @@ exports.bgLocationPing = onSchedule(
       const staleMs = 3 * 60 * 1000; // 3분 이상 안 올라온 사람만
       let sent = 0;
       for (const doc of snap.docs) {
-        const d = doc.data();
-        const last = d.liveLocation && d.liveLocation.updatedAt;
+        const uid = doc.id;
+        // 좌표는 liveLocations 로 분리됨 → 거기서 마지막 갱신 시각 확인
+        const locDoc = await db.collection("liveLocations").doc(uid).get();
+        const loc = locDoc.exists ? locDoc.data() : null;
+        const last = loc && loc.liveLocation && loc.liveLocation.updatedAt;
         const lastMs = last && last.toMillis ? last.toMillis() : 0;
         if (now - lastMs < staleMs) continue; // 최근 갱신됨 → 스킵
-        const uid = doc.id;
         const tokenDocs = await getTokenDocs(uid);
         const tokens = tokenDocs
             .filter((t) => t.platform !== "web") // 웹은 백그라운드 위치 불가

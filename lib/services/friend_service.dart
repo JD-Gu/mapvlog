@@ -244,7 +244,8 @@ class FriendService {
     try {
       final uid = _myUid;
       if (uid == null) return null;
-      final myDoc = await _users.doc(uid).get();
+      // 좌표는 liveLocations 로 분리됨 (본인 doc — 규칙상 읽기 허용)
+      final myDoc = await _db.collection('liveLocations').doc(uid).get();
       if (!myDoc.exists) return null;
       final liveLocation =
           myDoc.data()?['liveLocation'] as Map<String, dynamic>?;

@@ -226,5 +226,16 @@ service cloud.firestore {
                       && request.auth.uid == userId;
       }
     }
+
+    // ── liveLocations 컬렉션 (실시간 좌표 — 친구만 열람) ──────────────────────
+    // 민감한 GPS 좌표를 public-read인 users 문서에서 분리.
+    // 본인 또는 visibleTo(수락된 친구) 목록에 포함된 사용자만 읽기 가능.
+    // 클라이언트는 where('visibleTo', arrayContains: 내uid) 로 친구 것만 조회.
+    match /liveLocations/{uid} {
+      allow read: if request.auth != null
+                  && (request.auth.uid == uid
+                      || request.auth.uid in resource.data.visibleTo);
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }
