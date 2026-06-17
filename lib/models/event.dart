@@ -19,7 +19,7 @@ enum EventCategory {
         EventCategory.festival => '축제/바자회',
         EventCategory.public => '기업/브랜드',
         EventCategory.education => '교육/클래스',
-        EventCategory.daily => '일상',
+        EventCategory.daily => '브이로그',
       };
 
   String get emoji => switch (this) {

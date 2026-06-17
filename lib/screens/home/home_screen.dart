@@ -99,7 +99,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedCategories.contains(EventCategory.daily);
 
   Future<void> _openCategoryFilter() async {
-    final opts = EventCategory.values
+    // 브이로그(daily)를 최상단에, 이어서 이벤트 카테고리
+    final ordered = [
+      EventCategory.daily,
+      ...EventCategory.values.where((c) => c != EventCategory.daily),
+    ];
+    final opts = ordered
         .map((c) => _FilterOption(c.name, c.label, c.emoji))
         .toList();
     final result = await _showMultiCheck(
@@ -674,6 +679,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Expanded(
                       child: _FilterDropdownButton(
                         icon: Icons.groups_outlined,
+                        kind: '그룹',
                         summary: _groupSummary(),
                         count: _selectedGroupIds.length,
                         onTap: _openGroupFilter,
@@ -683,6 +689,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Expanded(
                       child: _FilterDropdownButton(
                         icon: Icons.category_outlined,
+                        kind: '카테고리',
                         summary: _categorySummary(),
                         count: _selectedCategories.length,
                         onTap: _openCategoryFilter,
@@ -1553,11 +1560,13 @@ class _FilterOption {
 // ─── 필터 드롭다운 버튼 (그룹·카테고리 멀티셀렉트) ────────────────────────
 class _FilterDropdownButton extends StatelessWidget {
   final IconData icon;
+  final String kind; // '그룹' | '카테고리' — 미선택 시 "{kind} 전체" 로 구분
   final String summary;
   final int count;
   final VoidCallback onTap;
   const _FilterDropdownButton({
     required this.icon,
+    required this.kind,
     required this.summary,
     required this.count,
     required this.onTap,
@@ -1567,6 +1576,8 @@ class _FilterDropdownButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final active = count > 0;
+    // 미선택이면 "그룹 전체" / "카테고리 전체" 로 어느 필터인지 구분
+    final text = active ? summary : '$kind 전체';
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -1593,11 +1604,11 @@ class _FilterDropdownButton extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                summary,
+                text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 13,
                   fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                   color: active ? cs.primary : cs.onSurface,
                 ),
@@ -1696,9 +1707,9 @@ class _MultiCheckSheetState extends State<_MultiCheckSheet> {
                     value: _sel.isEmpty,
                     onChanged: (_) => setState(_sel.clear),
                     controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
                     title: const Text('🌐  전체',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
                   ),
                   const Divider(height: 1),
                   ...widget.options.map((o) => CheckboxListTile(
@@ -1711,8 +1722,9 @@ class _MultiCheckSheetState extends State<_MultiCheckSheet> {
                           }
                         }),
                         controlAffinity: ListTileControlAffinity.leading,
-                        dense: true,
-                        title: Text('${o.emoji}  ${o.label}'),
+                        title: Text('${o.emoji}  ${o.label}',
+                            style: const TextStyle(
+                                fontSize: 15.5, fontWeight: FontWeight.w600)),
                       )),
                 ],
               ),
