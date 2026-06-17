@@ -895,10 +895,14 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   /// (나 포함, 그룹 필터/uneasy 제외 적용)
   List<LiveUser> _liveFriends() {
     final now = DateTime.now();
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
     final filtered = <LiveUser>[];
     for (final u in _users) {
       if (u.location == null) continue;
       if (now.difference(u.location!.updatedAt).inHours >= 1) continue;
+      final isMe = u.uid == myUid;
+      // 친구(accepted)만 — 비친구/미등록 사용자 위치 노출 차단
+      if (!isMe && !_friendUids.contains(u.uid)) continue;
       // 그룹 필터 활성 시 멤버 + 나만 표시
       if (_activeGroupFilter != null) {
         final group = _myGroups.firstWhere(
@@ -912,7 +916,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             createdAt: DateTime.now(),
           ),
         );
-        final isMe = u.uid == FirebaseAuth.instance.currentUser?.uid;
         if (!isMe && !group.memberUids.contains(u.uid)) continue;
       }
       filtered.add(u);
