@@ -155,8 +155,11 @@ service cloud.firestore {
 
     // ── users 컬렉션 ────────────────────────────────────────────────────────
     match /users/{userId} {
-      // 익명 포함 누구나 읽기
-      allow read: if true;
+      // 로그인 사용자만 읽기 — 익명 대량 위치 스크래핑 차단.
+      // (앱은 Google 로그인 필수, vlog는 작성자명/사진을 비정규화 저장하므로
+      //  로그아웃 딥링크에도 user 문서 읽기가 필요 없음)
+      // ⚠️ 인증 사용자 간 위치 노출은 2단계(liveLocations 분리)에서 차단 예정.
+      allow read: if request.auth != null;
 
       // 마스터 또는 본인 프로필만 생성·수정.
       // ⚠️ eventRole/eventCategories(역할)는 Super Master 만 변경 가능 —
