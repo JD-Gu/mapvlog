@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── 최고 관리자(Super Master) 권한 (jaduck9) ──────────────────────────
+    // ── 부트스트랩 오너(앱 제작자) — uid 고정. 항상 슈퍼, 강등 불가 ──────────
     function isMaster() {
       return request.auth != null
           && request.auth.uid == 'pNBOyNLJjVdgUYuGNwCWz8s3x0z1';
@@ -11,6 +11,13 @@ service cloud.firestore {
     // ── 이벤트 마스터(Event Master) — users 문서 eventRole/eventCategories ──
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // 슈퍼 마스터 = 부트스트랩 오너 또는 본인 문서 eventRole == 'super'.
+    // (본인 doc 을 참조하므로 스스로 super 를 부여하는 escalation 은 아래 users
+    //  update 규칙에서 role 키 변경을 isSuperMaster 로만 허용해 차단됨)
+    function isSuperMaster() {
+      return isMaster()
+          || (request.auth != null && userDoc().eventRole == 'super');
     }
     function isEventMasterFor(cat) {
       return request.auth != null
@@ -161,22 +168,22 @@ service cloud.firestore {
       // ⚠️ 인증 사용자 간 위치 노출은 2단계(liveLocations 분리)에서 차단 예정.
       allow read: if request.auth != null;
 
-      // 마스터 또는 본인 프로필만 생성·수정.
+      // 슈퍼 마스터 또는 본인 프로필만 생성·수정.
       // ⚠️ eventRole/eventCategories(역할)는 Super Master 만 변경 가능 —
       //    일반 사용자가 자기 doc 에 스스로 역할을 부여하지 못하게 차단.
-      allow create: if isMaster()
+      allow create: if isSuperMaster()
                     || (request.auth != null
                         && request.auth.uid == userId
                         && !request.resource.data.keys()
                             .hasAny(['eventRole', 'eventCategories']));
-      allow update: if isMaster()
+      allow update: if isSuperMaster()
                     || (request.auth != null
                         && request.auth.uid == userId
                         && !request.resource.data.diff(resource.data)
                             .affectedKeys()
                             .hasAny(['eventRole', 'eventCategories']));
 
-      // 마스터만 삭제 가능 (일반 사용자 삭제 불가)
+      // 문서 삭제는 부트스트랩 오너만 (일반·슈퍼 모두 불가)
       allow delete: if isMaster();
 
       // ── friends 서브컬렉션 (양쪽 관계 doc 페어) ──────────────────────────

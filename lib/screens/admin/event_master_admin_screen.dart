@@ -152,6 +152,62 @@ class _EventMasterAdminScreenState extends State<EventMasterAdminScreen> {
     if (mounted) _snack('해제됐어요');
   }
 
+  Future<void> _appointSuper(Map<String, dynamic> u) async {
+    final name = u['displayName']?.toString() ?? '사용자';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('슈퍼 마스터 지정'),
+        content: Text('"$name" 님을 슈퍼 마스터로 지정할까요?\n\n'
+            '슈퍼 마스터는 모든 카테고리의 이벤트를 관리하고, '
+            '다른 이벤트 마스터·슈퍼 마스터를 임명·해제할 수 있어요. '
+            '신뢰하는 사람에게만 부여하세요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            child: const Text('슈퍼로 지정'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    HapticFeedback.selectionClick();
+    await UserStatusService.setSuperMaster(u['uid'] as String, enabled: true);
+    if (!mounted) return;
+    _snack('$name 님을 슈퍼 마스터로 지정했어요');
+    setState(() {
+      _found = null;
+      _emailCtrl.clear();
+    });
+  }
+
+  Future<void> _revokeSuper(String uid, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('슈퍼 마스터 해제'),
+        content: Text('"$name" 님의 슈퍼 마스터 권한을 해제할까요?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('해제'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await UserStatusService.setSuperMaster(uid, enabled: false);
+    if (mounted) _snack('해제됐어요');
+  }
+
   String _catLabel(List<String> cats) {
     if (cats.contains('all')) return '🌐 전체';
     return cats
@@ -212,15 +268,79 @@ class _EventMasterAdminScreenState extends State<EventMasterAdminScreen> {
                 title: Text(_found!['displayName']?.toString() ?? '이름 없음',
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(_found!['email']?.toString() ?? ''),
-                trailing: FilledButton(
-                  onPressed: () => _appoint(_found!),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary),
-                  child: const Text('지정'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => _appoint(_found!),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          visualDensity: VisualDensity.compact),
+                      child: const Text('마스터'),
+                    ),
+                    const SizedBox(width: 6),
+                    FilledButton(
+                      onPressed: () => _appointSuper(_found!),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          visualDensity: VisualDensity.compact),
+                      child: const Text('👑 슈퍼'),
+                    ),
+                  ],
                 ),
               ),
             ),
           ],
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Text('현재 슈퍼 마스터',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('오너(앱 제작자)는 항상 슈퍼이며 목록에 표시되지 않아요',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: UserStatusService.watchSuperMasters(),
+            builder: (context, snap) {
+              final supers = snap.data ?? [];
+              if (supers.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text('아직 추가된 슈퍼 마스터가 없어요',
+                        style: TextStyle(
+                            fontSize: 12, color: cs.onSurfaceVariant)),
+                  ),
+                );
+              }
+              return Column(
+                children: supers.map((m) {
+                  final uid = m['uid'] as String;
+                  final name = m['displayName']?.toString() ?? '이름 없음';
+                  return Card(
+                    elevation: 0,
+                    color: cs.surfaceContainerHighest,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: const Text('👑', style: TextStyle(fontSize: 20)),
+                      title: Text(name,
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(m['email']?.toString() ?? '',
+                          style: TextStyle(
+                              fontSize: 11.5, color: cs.onSurfaceVariant)),
+                      trailing: IconButton(
+                        icon: Icon(Icons.person_remove_outlined,
+                            color: AppColors.error),
+                        tooltip: '해제',
+                        onPressed: () => _revokeSuper(uid, name),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
           const SizedBox(height: 20),
           const Divider(),
           const SizedBox(height: 8),

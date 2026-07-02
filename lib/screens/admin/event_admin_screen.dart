@@ -34,7 +34,7 @@ class EventAdminScreen extends StatelessWidget {
           final role = roleSnap.data?.role ?? '';
           final cats = roleSnap.data?.cats ?? const <String>[];
           final allowed = EventPermission.allowedCategories(role, cats);
-          final isSuper = EventPermission.isSuper;
+          final isSuper = EventPermission.isSuperRole(role);
           return _buildBody(context, cs, allowed, isSuper);
         },
       ),

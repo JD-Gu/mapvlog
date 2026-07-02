@@ -55,12 +55,37 @@ class UserStatusService {
         .map((s) => s.docs.map((d) => {'uid': d.id, ...d.data()}).toList());
   }
 
+  /// 현재 슈퍼 마스터 목록 (부여분 — eventRole == 'super').
+  /// 부트스트랩 오너(이메일 기준)는 eventRole 을 갖지 않으므로 여기 나타나지 않음.
+  static Stream<List<Map<String, dynamic>>> watchSuperMasters() {
+    return _users
+        .where('eventRole', isEqualTo: 'super')
+        .snapshots()
+        .map((s) => s.docs.map((d) => {'uid': d.id, ...d.data()}).toList());
+  }
+
   /// Super 가 Event Master 임명/해제 (categories: ['all'] 또는 카테고리 코드들)
   static Future<void> setEventMaster(String uid,
       {required bool enabled, List<String> categories = const []}) async {
     if (enabled) {
       await _users.doc(uid).set(
           {'eventRole': 'event', 'eventCategories': categories},
+          SetOptions(merge: true));
+    } else {
+      await _users.doc(uid).set({
+        'eventRole': FieldValue.delete(),
+        'eventCategories': FieldValue.delete(),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  /// Super 가 다른 사용자를 Super Master 로 임명/해제.
+  /// 슈퍼는 전체 카테고리를 관리하므로 eventCategories 는 ['all'] 로 고정.
+  static Future<void> setSuperMaster(String uid,
+      {required bool enabled}) async {
+    if (enabled) {
+      await _users.doc(uid).set(
+          {'eventRole': 'super', 'eventCategories': ['all']},
           SetOptions(merge: true));
     } else {
       await _users.doc(uid).set({

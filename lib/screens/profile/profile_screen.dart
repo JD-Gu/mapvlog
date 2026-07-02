@@ -355,7 +355,7 @@ class _UserView extends StatelessWidget {
                       child: OutlinedButton.icon(
                         onPressed: () => EventAdminScreen.open(context),
                         icon: const Icon(Icons.event, size: 16),
-                        label: Text(EventPermission.isSuper
+                        label: Text(EventPermission.isSuperRole(role)
                             ? '🎪 이벤트 관리'
                             : '🎪 이벤트 관리 (담당)'),
                         style: OutlinedButton.styleFrom(
@@ -372,28 +372,36 @@ class _UserView extends StatelessWidget {
                   },
                 ),
               ),
-              // Super 전용 — 이벤트 마스터 임명/해제
-              if (EventPermission.isSuper)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md, vertical: AppSpacing.xs),
-                    child: OutlinedButton.icon(
-                      onPressed: () => EventMasterAdminScreen.open(context),
-                      icon: const Icon(Icons.workspace_premium, size: 16),
-                      label: const Text('👑 이벤트 마스터 관리 (Super)'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        side: BorderSide(
-                            color: AppColors.primary.withValues(alpha: 0.4)),
-                        minimumSize: const Size(double.infinity, 42),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.md),
+              // Super 전용 — 이벤트 마스터/슈퍼 마스터 임명·해제 (역할 스트림 기반)
+              SliverToBoxAdapter(
+                child: StreamBuilder<({String role, List<String> cats})>(
+                  stream: UserStatusService.watchEventRole(user.uid),
+                  builder: (context, snap) {
+                    final role = snap.data?.role ?? '';
+                    if (!EventPermission.isSuperRole(role)) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                      child: OutlinedButton.icon(
+                        onPressed: () => EventMasterAdminScreen.open(context),
+                        icon: const Icon(Icons.workspace_premium, size: 16),
+                        label: const Text('👑 이벤트 마스터 관리 (Super)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.4)),
+                          minimumSize: const Size(double.infinity, 42),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
+              ),
 
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
 
